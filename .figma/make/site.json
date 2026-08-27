@@ -1,0 +1,11 @@
+{
+  "title": "HakunaMatata — Premium African Travel Experiences",
+  "description": "Explore and book categorized African tours with interactive pricing and user registration for a personalized travel planning experience.",
+  "robots": {
+    "index": true
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
