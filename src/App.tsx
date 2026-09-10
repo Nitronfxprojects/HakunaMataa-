@@ -1153,8 +1153,7 @@ function TourCard({ tour, onSelect }: { tour: Tour; onSelect: () => void }) {
   return (
     <div
       onClick={onSelect}
-      className="group cursor-pointer bg-card rounded-lg overflow-hidden border border-border hover:border-primary hover:shadow-xl transition-all duration-300"
-      style={{ boxShadow: '0 2px 8px rgba(26,58,42,0.06)' }}
+      className="card-surface interactive group overflow-hidden"
     >
       <div className="relative overflow-hidden bg-muted" style={{ height: 220 }}>
         <img
@@ -1181,14 +1180,14 @@ function TourCard({ tour, onSelect }: { tour: Tour; onSelect: () => void }) {
         <div className="flex items-start justify-between gap-2 mb-2">
           <h3
             className="font-semibold leading-snug group-hover:text-primary transition-colors"
-            style={{ fontFamily: 'Playfair Display, serif', fontSize: 17 }}
+            style={{ font: 'var(--text-h3)' }}
           >
             {tour.name}
           </h3>
         </div>
 
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-xs text-muted-foreground">{tour.duration}</span>
+          <span style={{ font: 'var(--text-small)', color: 'var(--muted-foreground)' }}>{tour.duration}</span>
           <span className="text-muted-foreground">·</span>
           <DifficultyBadge level={tour.difficulty} />
         </div>
@@ -1204,8 +1203,8 @@ function TourCard({ tour, onSelect }: { tour: Tour; onSelect: () => void }) {
             </div>
           </div>
           <button
-            className="flex items-center gap-1 text-sm font-medium px-4 py-2 rounded transition-all duration-200 hover:opacity-90"
-            style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+            className="btn btn-primary"
+            style={{ padding: '10px 18px', fontSize: 13 }}
             onClick={(e) => { e.stopPropagation(); onSelect() }}
           >
             View <IconChevron />
@@ -1548,8 +1547,7 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
+                className="btn btn-secondary w-full"
               >
                 Send Enquiry
               </button>
@@ -2112,7 +2110,7 @@ function BookedJourneyFlow({ onBrowse }: { onBrowse: () => void }) {
 
 // ─── Register Modal ───────────────────────────────────────────────────────────
 
-function RegisterModal({ onClose }: { onClose: () => void }) {
+function RegisterModal({ onClose, onAuth }: { onClose: () => void; onAuth: (name: string) => void }) {
   const [tab, setTab] = useState<'register' | 'login'>('register')
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
   const [submitted, setSubmitted] = useState(false)
@@ -2125,6 +2123,10 @@ function RegisterModal({ onClose }: { onClose: () => void }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
+    const displayName = tab === 'register'
+      ? form.name.trim()
+      : form.email.split('@')[0]
+    onAuth(displayName || 'Explorer')
   }
 
   return (
@@ -2234,8 +2236,7 @@ function RegisterModal({ onClose }: { onClose: () => void }) {
               )}
               <button
                 type="submit"
-                className="w-full py-3 rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                className="btn btn-primary w-full"
               >
                 {tab === 'register' ? 'Create Account' : 'Sign In'}
               </button>
@@ -2452,7 +2453,7 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
     { label: 'Home', id: 'home', view: 'home' as View },
     { label: 'Explore', id: 'explore', view: 'explore' as View },
     { label: 'Plan', id: 'plan', view: 'plan' as View },
-    { label: 'My Trips', id: 'trips', view: 'trips' as View },
+    ...(userName ? [{ label: 'My Trips', id: 'trips', view: 'trips' as View }] : []),
     { label: 'About', id: 'about', view: null },
     { label: 'Contact', id: 'contact', view: null },
   ]
@@ -2498,8 +2499,8 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
           <div className="flex items-center gap-2.5">
             {/* Plan My Trip CTA — desktop */}
             <button onClick={() => onNavigate?.('plan')}
-              className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-all"
-              style={{ backgroundColor: 'var(--secondary)', color: 'white', fontFamily: 'Outfit, sans-serif', boxShadow: '0 2px 12px rgba(196,98,45,0.3)' }}>
+              className="btn btn-secondary hidden lg:flex"
+              style={{ padding: '10px 18px', fontSize: 13.5 }}>
               Plan My Trip ✦
             </button>
             {userName ? (
@@ -2510,15 +2511,25 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
                   {userName.charAt(0).toUpperCase()}
                 </div>
                 <button onClick={onLogout}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-80 transition-opacity"
-                  style={{ backgroundColor: solid ? 'var(--muted)' : 'rgba(255,255,255,0.15)', color: linkColor, border: '1px solid', borderColor: solid ? 'var(--border)' : 'rgba(255,255,255,0.3)', fontFamily: 'Outfit, sans-serif' }}>
+                  className="btn"
+                  style={{
+                    padding: '7px 14px', fontSize: 12,
+                    backgroundColor: solid ? 'var(--muted)' : 'rgba(255,255,255,0.15)',
+                    color: linkColor, border: '1px solid', borderColor: solid ? 'var(--border)' : 'rgba(255,255,255,0.3)',
+                    boxShadow: 'none',
+                  }}>
                   Sign out
                 </button>
               </div>
             ) : (
               <button onClick={onRegister}
-                className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-all"
-                style={{ backgroundColor: solid ? 'var(--primary)' : 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid', borderColor: solid ? 'var(--primary)' : 'rgba(255,255,255,0.4)', backdropFilter: 'blur(8px)', fontFamily: 'Outfit, sans-serif' }}>
+                className="btn hidden lg:flex"
+                style={{
+                  padding: '10px 18px', fontSize: 13.5,
+                  backgroundColor: solid ? 'var(--primary)' : 'rgba(255,255,255,0.15)',
+                  color: 'white', border: '1px solid', borderColor: solid ? 'var(--primary)' : 'rgba(255,255,255,0.4)',
+                  backdropFilter: 'blur(8px)', boxShadow: solid ? 'var(--shadow-sm)' : 'none',
+                }}>
                 <IconUser /> Sign In
               </button>
             )}
@@ -2541,14 +2552,12 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
               </button>
             ))}
             <button onClick={() => { onNavigate?.('plan'); setMobileOpen(false) }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold mt-2 hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: 'var(--secondary)', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
+              className="btn btn-secondary mt-2 w-full">
               Plan My Trip ✦
             </button>
             {!userName && (
               <button onClick={() => { onRegister(); setMobileOpen(false) }}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold mt-1 hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: 'var(--primary)', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
+                className="btn btn-primary mt-1 w-full">
                 <IconUser /> Sign In
               </button>
             )}
@@ -2561,18 +2570,17 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
-function Hero({ onExplore, onRegister }: { onExplore: () => void; onRegister: () => void }) {
+function Hero({ onExplore }: { onExplore: () => void }) {
   return (
     <section className="relative" style={{ height: '100vh', minHeight: 620 }}>
       <div className="absolute inset-0 bg-primary">
         <img
-          src="https://images.unsplash.com/photo-1602410125631-7e736e36797c?w=1600&h=900&fit=crop&auto=format"
-          alt="Zebra on Serengeti plains"
+          src="https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1920&h=1080&fit=crop&auto=format&q=85"
+          alt="Elephant herd at golden hour on the Tanzanian savanna"
           className="w-full h-full object-cover"
-          style={{ opacity: 0.75, mixBlendMode: 'multiply' }}
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/10 to-black/60" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/5 to-black/55" />
 
       <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-5 pt-16">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6"
@@ -2585,7 +2593,7 @@ function Hero({ onExplore, onRegister }: { onExplore: () => void; onRegister: ()
           className="text-white mb-4 leading-tight"
           style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(38px, 6vw, 72px)', maxWidth: 780, textShadow: '0 2px 12px rgba(0,0,0,0.4)' }}
         >
-          Your Luxurious African Adventure <em>Begins Here</em>
+          Your luxurious African adventure begins here
         </h1>
 
         <p className="text-white/80 mb-10 max-w-xl leading-relaxed" style={{ fontSize: 'clamp(15px, 2vw, 18px)' }}>
@@ -2595,35 +2603,73 @@ function Hero({ onExplore, onRegister }: { onExplore: () => void; onRegister: ()
         <div className="flex flex-wrap gap-4 justify-center">
           <button
             onClick={onExplore}
-            className="px-7 py-3.5 rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: 'var(--secondary)', color: 'white' }}
+            className="btn btn-secondary"
+            style={{ padding: '14px 28px', fontSize: 14.5 }}
           >
             Explore All Tours
           </button>
-          <button
-            onClick={onRegister}
-            className="px-7 py-3.5 rounded-lg font-semibold text-sm hover:bg-white/20 transition-colors"
-            style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.35)', backdropFilter: 'blur(8px)' }}
-          >
-            Create Account
-          </button>
         </div>
+      </div>
+    </section>
+  )
+}
 
-        {/* Stats */}
-        <div className="absolute bottom-10 left-0 right-0 px-5">
-          <div className="max-w-3xl mx-auto grid grid-cols-3 gap-4">
-            {[
-              { value: '500+', label: 'Happy Travellers' },
-              { value: '13', label: 'Tour Packages' },
-              { value: '4.9★', label: 'TripAdvisor Rating' },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl font-bold text-white" style={{ fontFamily: 'Playfair Display, serif' }}>{stat.value}</div>
-                <div className="text-white/60 text-xs mt-0.5">{stat.label}</div>
-              </div>
-            ))}
+// ─── Stats Ticker ─────────────────────────────────────────────────────────────
+
+function useCountUp(target: number, trigger: boolean, duration = 1600) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    if (!trigger) return
+    let frame: number
+    let start: number | null = null
+    const step = (ts: number) => {
+      if (start === null) start = ts
+      const progress = Math.min((ts - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3) // ease-out cubic
+      setValue(target * eased)
+      if (progress < 1) frame = requestAnimationFrame(step)
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [trigger, target, duration])
+  return value
+}
+
+function StatsTicker() {
+  const sectionRef = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setVisible(true); obs.disconnect() }
+    }, { threshold: 0.4 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const travellers = useCountUp(500, visible)
+  const packages = useCountUp(13, visible)
+  const rating = useCountUp(4.9, visible, 1400)
+
+  const stats = [
+    { value: `${Math.round(travellers)}+`, label: 'Happy Travellers' },
+    { value: `${Math.round(packages)}`, label: 'Tour Packages' },
+    { value: `${rating.toFixed(1)}★`, label: 'TripAdvisor Rating' },
+  ]
+
+  return (
+    <section ref={sectionRef} className="py-10 px-5" style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+      <div className="max-w-3xl mx-auto grid grid-cols-3 gap-4">
+        {stats.map(stat => (
+          <div key={stat.label} className="text-center">
+            <div style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 'clamp(24px, 4vw, 32px)', color: 'var(--primary)' }}>
+              {stat.value}
+            </div>
+            <div className="text-xs md:text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>{stat.label}</div>
           </div>
-        </div>
+        ))}
       </div>
     </section>
   )
@@ -2815,7 +2861,7 @@ function Footer({ onRegister }: { onRegister: () => void }) {
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
-            style={{ backgroundColor: 'var(--primary)' }}>AQ</div>
+            style={{ backgroundColor: 'var(--primary)' }}>HM</div>
           <span style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 15, color: 'var(--foreground)' }}>
             HakunaMatataWorld
           </span>
@@ -2828,7 +2874,7 @@ function Footer({ onRegister }: { onRegister: () => void }) {
           className="text-xs font-medium hover:opacity-70 transition-opacity"
           style={{ color: 'var(--secondary)' }}
         >
-          Register an Account →
+          Register an account
         </button>
       </div>
     </footer>
@@ -3227,7 +3273,7 @@ function TourJourneyFlow() {
 
 // ─── Bottom Navigation ────────────────────────────────────────────────────────
 
-function BottomNav({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
+function BottomNav({ view, onNavigate, userName }: { view: View; onNavigate: (v: View) => void; userName: string | null }) {
   const items: Array<{ key: View; label: string; svg: React.ReactNode }> = [
     {
       key: 'home', label: 'Home',
@@ -3241,10 +3287,10 @@ function BottomNav({ view, onNavigate }: { view: View; onNavigate: (v: View) => 
       key: 'plan', label: 'Plan',
       svg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
     },
-    {
-      key: 'trips', label: 'My Trips',
+    ...(userName ? [{
+      key: 'trips' as View, label: 'My Trips',
       svg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>,
-    },
+    }] : []),
     {
       key: 'profile', label: 'Profile',
       svg: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
@@ -3990,7 +4036,25 @@ function TripsScreen({ booking, onNavigate }: { booking: Booking | null; onNavig
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 
-function ProfileScreen({ userName, booking, onLogout, onNavigate }: { userName: string; booking: Booking | null; onLogout: () => void; onNavigate: (v: View) => void }) {
+function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: { userName: string | null; booking: Booking | null; onLogout: () => void; onNavigate: (v: View) => void; onRegister: () => void }) {
+  if (!userName) {
+    return (
+      <div className="pt-20 pb-24 md:pb-10 flex flex-col items-center justify-center text-center px-5"
+        style={{ minHeight: '70vh', backgroundColor: 'var(--background)' }}>
+        <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl mb-4"
+          style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>👤</div>
+        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, color: 'var(--foreground)' }}>You're browsing as a guest</h2>
+        <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: 'var(--muted-foreground)', marginTop: 8, maxWidth: 320 }}>
+          Create an account to save trips, view your booking history, and get personalized recommendations.
+        </p>
+        <button onClick={onRegister}
+          className="mt-6 px-6 py-3 rounded-full text-white font-semibold"
+          style={{ backgroundColor: 'var(--primary)', fontFamily: 'Outfit, sans-serif' }}>
+          Create Account / Sign In
+        </button>
+      </div>
+    )
+  }
   const menuItems = [
     { icon: '🎫', label: 'My Bookings', sub: booking ? `1 active · ${booking.ref}` : 'No active bookings', action: () => onNavigate('trips') },
     { icon: '🗺️', label: 'Tour Journey Flow', sub: 'Arusha to Zanzibar route', action: () => onNavigate('trips') },
@@ -4088,16 +4152,12 @@ export default function App() {
   const closeModal = () => setModal({ type: 'none' })
   const navigate = (v: View) => setView(v)
 
-  if (!userName) {
-    return <LoginScreen onLogin={name => setUserName(name)} />
-  }
-
   // BookedPage shown after real booking completion
   if (booking && view === 'booked' as unknown as View) {
     return (
       <BookedPage
         booking={booking}
-        userName={userName}
+        userName={userName ?? booking.name}
         onBack={() => { setBooking(null); setView('home') }}
         onLogout={() => { setUserName(null); setBooking(null); setView('home') }}
       />
@@ -4125,7 +4185,8 @@ export default function App() {
 
       {/* ── Home ── */}
       {view === 'home' && <>
-        <Hero onExplore={() => document.getElementById('tours')?.scrollIntoView({ behavior: 'smooth' })} onRegister={() => setModal({ type: 'register' })} />
+        <Hero onExplore={() => document.getElementById('tours')?.scrollIntoView({ behavior: 'smooth' })} />
+        <StatsTicker />
 
         <section id="tours" className="py-20 px-5 md:px-8" style={{ backgroundColor: 'var(--background)' }}>
           <div className="max-w-7xl mx-auto">
@@ -4191,11 +4252,12 @@ export default function App() {
           booking={booking}
           onLogout={() => { setUserName(null); setBooking(null); setView('home') }}
           onNavigate={navigate}
+          onRegister={() => setModal({ type: 'register' })}
         />
       )}
 
       {/* Mobile bottom nav */}
-      <BottomNav view={view} onNavigate={navigate} />
+      <BottomNav view={view} onNavigate={navigate} userName={userName} />
 
       {/* Modals */}
       {modal.type === 'tour' && (
@@ -4204,7 +4266,7 @@ export default function App() {
       {modal.type === 'booking' && (
         <BookingModal tour={modal.tour} onClose={closeModal} onBooked={b => { setBooking(b); setModal({ type: 'none' }); navigate('trips') }} />
       )}
-      {modal.type === 'register' && <RegisterModal onClose={closeModal} />}
+      {modal.type === 'register' && <RegisterModal onClose={closeModal} onAuth={name => setUserName(name)} />}
     </div>
   )
 }
