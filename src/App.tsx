@@ -336,6 +336,7 @@ type Booking = {
   total: number
   notes: string
   bookedAt: string
+  paymentStatus: 'unpaid' | 'pending' | 'paid'
 }
 
 type View = 'home' | 'explore' | 'plan' | 'trips' | 'profile'
@@ -345,6 +346,7 @@ type ModalState =
   | { type: 'tour'; tour: Tour }
   | { type: 'register' }
   | { type: 'booking'; tour: Tour }
+  | { type: 'payment' }
 
 // ─── Route Data ───────────────────────────────────────────────────────────────
 
@@ -1358,41 +1360,18 @@ function TourModal({ tour, onClose, onBook }: { tour: Tour; onClose: () => void;
                 className="rounded-xl p-4"
                 style={{ backgroundColor: 'var(--muted)' }}
               >
-                <div className="text-xs text-muted-foreground mb-1">Price from</div>
-                <div className="text-4xl font-bold mb-1" style={{ color: 'var(--primary)', fontFamily: 'Playfair Display, serif' }}>
-                  ${tour.price.toLocaleString()}
-                </div>
-                <div className="text-sm text-muted-foreground mb-5">per person</div>
-
-                <div className="space-y-2 mb-5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Duration</span>
-                    <span className="font-medium">{tour.duration}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Group size</span>
-                    <span className="font-medium">{tour.groupSize}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Difficulty</span>
-                    <span className="font-medium">{tour.difficulty}</span>
-                  </div>
-                </div>
-
                 <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
                   No payment now — our team will confirm availability and send a detailed proposal within 24 hours.
                 </p>
                 <button
                   onClick={onBook}
-                  className="w-full py-3 rounded-lg font-semibold text-sm hover:opacity-90 transition-opacity mb-2"
-                  style={{ backgroundColor: 'var(--secondary)', color: 'var(--secondary-foreground)' }}
+                  className="btn btn-secondary w-full mb-2"
                 >
                   Book This Tour
                 </button>
                 <button
                   onClick={onClose}
-                  className="w-full py-2.5 rounded-lg font-medium text-sm border hover:bg-muted transition-colors"
-                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                  className="btn btn-outline w-full"
                 >
                   Back to Tours
                 </button>
@@ -1408,39 +1387,96 @@ function TourModal({ tour, onClose, onBook }: { tour: Tour; onClose: () => void;
 
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
-function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => void; onBooked: (b: Booking) => void }) {
+function BookingModal({
+  tour, userName, onClose, onBooked, onPayIntent, onAuth,
+}: {
+  tour: Tour
+  userName: string | null
+  onClose: () => void
+  onBooked: (b: Booking) => void
+  onPayIntent: (b: Booking) => void
+  onAuth: (name: string) => void
+}) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', date: '', guests: '2', notes: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [showAuth, setShowAuth] = useState(false)
+  const [pendingAction, setPendingAction] = useState<'pay' | null>(null)
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitted(true)
+  const validate = () => {
+    const next: Record<string, string> = {}
+    if (form.name.trim().length < 2) {
+      next.name = 'Please enter your full name.'
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      next.email = 'Enter a valid email address.'
+    }
+    if (form.phone.trim() && !/^[+\d][\d\s().-]{6,}$/.test(form.phone.trim())) {
+      next.phone = 'Enter a valid phone number, or leave this blank.'
+    }
+    if (!form.date) {
+      next.date = 'Choose a preferred start date.'
+    } else if (new Date(form.date) < new Date(new Date().toDateString())) {
+      next.date = 'Pick a date in the future.'
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
+  const buildBooking = (paymentStatus: Booking['paymentStatus']): Booking => {
     const ref = 'HMW-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000)
-    const booking: Booking = {
+    return {
       ref,
       tour,
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
       date: form.date,
       guests: parseInt(form.guests),
       total: tour.price * parseInt(form.guests),
       notes: form.notes,
       bookedAt: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+      paymentStatus,
     }
-    setTimeout(() => onBooked(booking), 1200)
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+    setSubmitted(true)
+    setTimeout(() => onBooked(buildBooking('unpaid')), 1200)
+  }
+
+  const handlePayNow = () => {
+    if (!validate()) return
+    if (!userName) {
+      setPendingAction('pay')
+      setShowAuth(true)
+      return
+    }
+    onPayIntent(buildBooking('pending'))
+  }
+
+  // Once signed in via the nested auth step, resume whatever action was waiting on it.
+  const handleAuthed = (name: string) => {
+    onAuth(name)
+    setShowAuth(false)
+    if (pendingAction === 'pay') {
+      onPayIntent(buildBooking('pending'))
+    }
+    setPendingAction(null)
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
       <div
         className="w-full max-w-lg rounded-xl bg-card p-8 relative"
-        style={{ boxShadow: '0 24px 64px rgba(0,0,0,0.35)', maxHeight: '92vh', overflowY: 'auto' }}
+        style={{ boxShadow: 'var(--shadow-lg)', maxHeight: '92vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={onClose} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
@@ -1469,10 +1505,11 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
                     required
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all"
+                    className={`w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all ${errors.name ? 'field-error' : ''}`}
                     style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', '--tw-ring-color': 'var(--primary)' } as React.CSSProperties}
                     placeholder="Jane Smith"
                   />
+                  {errors.name && <p className="field-error-msg">{errors.name}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Email *</label>
@@ -1481,10 +1518,11 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all"
+                    className={`w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all ${errors.email ? 'field-error' : ''}`}
                     style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
                     placeholder="jane@email.com"
                   />
+                  {errors.email && <p className="field-error-msg">{errors.email}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1493,10 +1531,11 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
                   <input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all"
+                    className={`w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all ${errors.phone ? 'field-error' : ''}`}
                     style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
                     placeholder="+1 (555) 000-0000"
                   />
+                  {errors.phone && <p className="field-error-msg">{errors.phone}</p>}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">No. of Guests</label>
@@ -1519,9 +1558,10 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
                   type="date"
                   value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all"
+                  className={`w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all ${errors.date ? 'field-error' : ''}`}
                   style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
                 />
+                {errors.date && <p className="field-error-msg">{errors.date}</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Special Requests</label>
@@ -1554,9 +1594,150 @@ function BookingModal({ tour, onClose, onBooked }: { tour: Tour; onClose: () => 
               <p className="text-xs text-center text-muted-foreground">
                 No payment now — our team will confirm availability and send a detailed proposal.
               </p>
+
+              <div className="flex items-center gap-3 my-1">
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+                <span className="text-xs text-muted-foreground">or</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePayNow}
+                className="btn btn-primary w-full"
+              >
+                Pay &amp; Reserve Now
+              </button>
+              <p className="text-xs text-center text-muted-foreground">
+                {userName
+                  ? 'Secures your spot immediately — logged under My Trips.'
+                  : 'Requires a quick sign-in so your reservation is saved to your account.'}
+              </p>
             </form>
           </>
         )}
+      </div>
+
+      {showAuth && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(28,42,30,0.55)', backdropFilter: 'blur(2px)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-1" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)' }}>
+            <InlineAuthForm onAuth={handleAuthed} onCancel={() => { setShowAuth(false); setPendingAction(null) }} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Inline Auth (nested sign-in step inside the booking flow) ────────────────
+
+function InlineAuthForm({ onAuth, onCancel }: { onAuth: (name: string) => void; onCancel: () => void }) {
+  const [form, setForm] = useState({ name: '', email: '' })
+  const [error, setError] = useState('')
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (form.name.trim().length < 2) { setError('Please enter your full name.'); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setError('Enter a valid email address.'); return }
+    onAuth(form.name.trim())
+  }
+
+  return (
+    <div className="p-7">
+      <div className="flex justify-end mb-1">
+        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+          <IconClose />
+        </button>
+      </div>
+      <div className="text-center mb-5" style={{ marginTop: -12 }}>
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 text-white" style={{ backgroundColor: 'var(--primary)' }}>
+          <IconUser />
+        </div>
+        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }} className="mb-1">Sign in to pay</h2>
+        <p className="text-sm text-muted-foreground">So this reservation is saved to your account under My Trips.</p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input
+          value={form.name}
+          onChange={e => setForm({ ...form, name: e.target.value })}
+          placeholder="Full name"
+          className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+        />
+        <input
+          value={form.email}
+          onChange={e => setForm({ ...form, email: e.target.value })}
+          placeholder="Email"
+          type="email"
+          className="w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
+        />
+        {error && <p className="field-error-msg">{error}</p>}
+        <button type="submit" className="btn btn-primary w-full">Continue to Payment</button>
+        <button type="button" onClick={onCancel} className="btn btn-outline w-full">Cancel</button>
+      </form>
+    </div>
+  )
+}
+
+// ─── Payment Modal ──────────────────────────────────────────────────────────
+// NOTE: no real payment provider is wired up yet (Stripe/Paystack TBD — see project
+// backlog). This deliberately does NOT collect card details, since a fake card-entry
+// form with no real processor behind it would be misleading to a real customer.
+// Swap the `handlePay` body for a real charge call (via a backend/Netlify Function —
+// never call a payment API with a secret key from the client) once a provider is chosen.
+
+function PaymentModal({ booking, onCancel, onPaid }: { booking: Booking; onCancel: () => void; onPaid: () => void }) {
+  const [processing, setProcessing] = useState(false)
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  const handlePay = () => {
+    setProcessing(true)
+    setTimeout(onPaid, 1400)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(28,42,30,0.6)' }}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)' }}>
+        <div className="p-6">
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 20, color: 'var(--foreground)' }}>Complete Payment</h2>
+              <p className="text-xs text-muted-foreground mt-1">Booking ref {booking.ref}</p>
+            </div>
+            <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><IconClose /></button>
+          </div>
+
+          <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: 'var(--muted)' }}>
+            <div className="flex justify-between text-sm mb-1.5">
+              <span className="text-muted-foreground">{booking.tour.name}</span>
+              <span className="font-medium">{booking.guests} guest{booking.guests > 1 ? 's' : ''}</span>
+            </div>
+            <div className="flex justify-between items-baseline pt-2 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+              <span className="text-sm text-muted-foreground">Total due</span>
+              <span style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 600, color: 'var(--primary)' }}>
+                ${booking.total.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+            This reservation is already saved under My Trips as <strong>pending</strong>. Completing payment below
+            confirms your spot — your card is never charged twice, and you can also finish this later from My Trips.
+          </p>
+
+          <button onClick={handlePay} disabled={processing} className="btn btn-secondary w-full mb-2">
+            {processing ? 'Processing…' : `Pay $${booking.total.toLocaleString()} Securely`}
+          </button>
+          <button onClick={onCancel} disabled={processing} className="btn btn-outline w-full">
+            Pay Later
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1613,8 +1794,7 @@ function BookedPage({ booking, onBack, onLogout, userName }: { booking: Booking;
             {/* My Bookings card */}
             <button
               onClick={() => setActiveTab('booking')}
-              className="w-full flex items-center gap-4 p-5 rounded-2xl border text-left hover:shadow-md transition-shadow"
-              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
+              className="card-surface interactive w-full flex items-center gap-4 p-5"
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
                 style={{ backgroundColor: 'rgba(26,58,42,0.1)' }}>🎫</div>
@@ -1622,14 +1802,13 @@ function BookedPage({ booking, onBack, onLogout, userName }: { booking: Booking;
                 <div className="font-semibold text-sm" style={{ fontFamily: 'Outfit, sans-serif', color: 'var(--foreground)' }}>My Bookings</div>
                 <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>1 active booking · {ref}</div>
               </div>
-              <span style={{ color: 'var(--muted-foreground)' }}>→</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
 
             {/* Journey Flow card */}
             <button
               onClick={() => { setActiveTab('booking'); setTimeout(() => document.getElementById('journey-flow')?.scrollIntoView({ behavior: 'smooth' }), 100) }}
-              className="w-full flex items-center gap-4 p-5 rounded-2xl border text-left hover:shadow-md transition-shadow"
-              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
+              className="card-surface interactive w-full flex items-center gap-4 p-5"
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
                 style={{ backgroundColor: 'rgba(196,98,45,0.1)' }}>🗺️</div>
@@ -1637,7 +1816,7 @@ function BookedPage({ booking, onBack, onLogout, userName }: { booking: Booking;
                 <div className="font-semibold text-sm" style={{ fontFamily: 'Outfit, sans-serif', color: 'var(--foreground)' }}>Tour Journey Flow</div>
                 <div className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>Explore the Tanzania route — Arusha to Zanzibar</div>
               </div>
-              <span style={{ color: 'var(--muted-foreground)' }}>→</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
 
             {/* Stats row */}
@@ -1868,8 +2047,7 @@ function BookedPage({ booking, onBack, onLogout, userName }: { booking: Booking;
                 {/* Action */}
                 <div className="border-t pt-4 space-y-2.5" style={{ borderColor: 'var(--border)' }}>
                   <button onClick={onBack}
-                    className="w-full py-3 rounded-xl font-semibold text-sm hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)' }}>
+                    className="btn btn-primary w-full">
                     Explore More Tours
                   </button>
                   <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground pt-1">
@@ -2070,7 +2248,7 @@ function BookedJourneyFlow({ onBrowse }: { onBrowse: () => void }) {
             <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
               <button onClick={() => setActiveStop(Math.max(0, activeStop - 1))} disabled={activeStop === 0}
                 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: activeStop === 0 ? 'rgba(245,240,232,0.18)' : 'rgba(245,240,232,0.65)', cursor: activeStop === 0 ? 'not-allowed' : 'pointer' }}>
-                ← Prev
+                Prev
               </button>
               <div className="flex items-center gap-1.5">
                 {JOURNEY_STOPS.map((_, i) => (
@@ -2083,7 +2261,7 @@ function BookedJourneyFlow({ onBrowse }: { onBrowse: () => void }) {
               </div>
               <button onClick={() => setActiveStop(Math.min(JOURNEY_STOPS.length - 1, activeStop + 1))} disabled={activeStop === JOURNEY_STOPS.length - 1}
                 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: activeStop === JOURNEY_STOPS.length - 1 ? 'rgba(245,240,232,0.18)' : 'rgba(245,240,232,0.65)', cursor: activeStop === JOURNEY_STOPS.length - 1 ? 'not-allowed' : 'pointer' }}>
-                Next →
+                Next
               </button>
             </div>
           </div>
@@ -2100,7 +2278,7 @@ function BookedJourneyFlow({ onBrowse }: { onBrowse: () => void }) {
             className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-semibold text-sm transition-all hover:opacity-90 hover:scale-105"
             style={{ fontFamily: 'Outfit, sans-serif', backgroundColor: '#c4622d', color: '#f5f0e8', boxShadow: '0 8px 32px rgba(196,98,45,0.35)' }}
           >
-            Browse Tour Packages →
+            Browse Tour Packages
           </button>
         </div>
       </div>
@@ -2133,7 +2311,7 @@ function RegisterModal({ onClose, onAuth }: { onClose: () => void; onAuth: (name
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
       <div
         className="w-full max-w-md rounded-xl bg-card p-8 relative"
-        style={{ boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}
+        style={{ boxShadow: 'var(--shadow-lg)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={onClose} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
@@ -2243,189 +2421,6 @@ function RegisterModal({ onClose, onAuth }: { onClose: () => void; onAuth: (name
             </form>
           </>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Login Screen ─────────────────────────────────────────────────────────────
-
-function LoginScreen({ onLogin }: { onLogin: (name: string) => void }) {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showPw, setShowPw] = useState(false)
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!username.trim() || !password) { setError('Please enter your username and password.'); return }
-    setError(''); setLoading(true)
-    setTimeout(() => onLogin(username.trim()), 900)
-  }
-
-  return (
-    <div className="fixed inset-0 flex" style={{ fontFamily: "'Outfit', sans-serif" }}>
-      {/* ── Left image panel ── */}
-      <div className="hidden lg:flex relative flex-col justify-between w-[52%] flex-shrink-0 overflow-hidden">
-        <img
-          src="https://images.unsplash.com/photo-1602410125631-7e736e36797c?w=1200&h=1400&fit=crop&auto=format"
-          alt="Serengeti sunrise"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg, rgba(26,58,42,0.55) 0%, rgba(0,0,0,0.35) 60%, rgba(196,98,45,0.25) 100%)' }} />
-
-        {/* Brand */}
-        <div className="relative z-10 p-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-              style={{ backgroundColor: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.5)', color: 'white' }}>
-              HM
-            </div>
-            <span className="text-white font-semibold text-xl" style={{ fontFamily: 'Playfair Display, serif' }}>
-              HakunaM<span style={{ color: '#d4a017' }}>atataWorld</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Quote */}
-        <div className="relative z-10 p-10 pb-12">
-          <div className="flex gap-1 mb-4">
-            {[...Array(5)].map((_, i) => <span key={i} style={{ color: '#d4a017', fontSize: 18 }}>★</span>)}
-          </div>
-          <p className="text-white leading-relaxed mb-4" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20, fontStyle: 'italic', maxWidth: 420 }}>
-            "Every sunrise in the Serengeti reminded me that this was not just a trip — it was a transformation."
-          </p>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/40">
-              <img src="https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=80&h=80&fit=crop&auto=format" alt="Guest" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <div className="text-white font-semibold text-sm">Sophie Hartmann</div>
-              <div className="text-white/55 text-xs">Verified Guest · Berlin, Germany</div>
-            </div>
-          </div>
-
-          {/* Mini stat pills */}
-          <div className="flex gap-3 mt-8 flex-wrap">
-            {[{ v: '500+', l: 'Happy Guests' }, { v: '13', l: 'Tours' }, { v: '4.9★', l: 'Rated' }].map(s => (
-              <div key={s.l} className="px-4 py-2 rounded-full text-sm font-semibold"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: 'white', border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(8px)' }}>
-                {s.v} <span style={{ opacity: 0.65 }}>{s.l}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right form panel ── */}
-      <div className="flex-1 flex flex-col justify-center px-8 md:px-14 py-12 overflow-y-auto" style={{ backgroundColor: 'var(--background)' }}>
-        {/* Mobile brand */}
-        <div className="flex items-center gap-2 mb-10 lg:hidden">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: 'var(--primary)' }}>HM</div>
-          <span style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 16 }}>HakunaMatataWorld</span>
-        </div>
-
-        <div style={{ maxWidth: 400, width: '100%', margin: '0 auto' }}>
-          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--secondary)' }}>Welcome back</p>
-          <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(28px, 4vw, 38px)', color: 'var(--foreground)', lineHeight: 1.2 }} className="mb-2">
-            Sign in to your<br />adventure account
-          </h1>
-          <p className="text-sm text-muted-foreground mb-8">Enter any username and password to continue.</p>
-
-          <form onSubmit={submit} className="space-y-5">
-            {/* Username */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Username</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" style={{ fontSize: 15 }}>👤</span>
-                <input
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  autoComplete="username"
-                  className="w-full pl-11 pr-4 py-3.5 rounded-xl border text-sm outline-none transition-all"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)', color: 'var(--foreground)' }}
-                  placeholder="e.g. jane.explorer"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Password</label>
-                <button type="button" className="text-xs font-medium hover:opacity-70 transition-opacity" style={{ color: 'var(--secondary)' }}>
-                  Forgot password?
-                </button>
-              </div>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" style={{ fontSize: 15 }}>🔒</span>
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="w-full pl-11 pr-11 py-3.5 rounded-xl border text-sm outline-none transition-all"
-                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)', color: 'var(--foreground)' }}
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(v => !v)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:opacity-70 transition-opacity"
-                  style={{ fontSize: 15 }}
-                >
-                  {showPw ? '🙈' : '👁️'}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-xs font-medium px-4 py-3 rounded-lg" style={{ backgroundColor: 'rgba(196,98,45,0.1)', color: 'var(--secondary)', border: '1px solid rgba(196,98,45,0.25)' }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 rounded-xl font-semibold text-sm transition-all hover:opacity-90 disabled:opacity-60 relative overflow-hidden"
-              style={{ backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', marginTop: 8 }}
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full inline-block" style={{ animation: 'spin 0.7s linear infinite' }} />
-                  Signing in…
-                </span>
-              ) : 'Sign In →'}
-            </button>
-          </form>
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 border-t" style={{ borderColor: 'var(--border)' }} />
-            <span className="text-xs text-muted-foreground px-2">or</span>
-            <div className="flex-1 border-t" style={{ borderColor: 'var(--border)' }} />
-          </div>
-
-          {/* Social login placeholders */}
-          <div className="grid grid-cols-2 gap-3">
-            {[{ icon: '🌐', label: 'Google' }, { icon: '🍎', label: 'Apple' }].map(s => (
-              <button key={s.label} type="button"
-                className="flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-semibold transition-all hover:opacity-80"
-                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)', color: 'var(--foreground)' }}>
-                <span>{s.icon}</span> {s.label}
-              </button>
-            ))}
-          </div>
-
-          <p className="text-xs text-center text-muted-foreground mt-8">
-            New to HakunaMatataWorld?{' '}
-            <button type="button" className="font-semibold hover:opacity-70 transition-opacity" style={{ color: 'var(--primary)' }}
-              onClick={() => onLogin('Explorer')}>
-              Start exploring →
-            </button>
-          </p>
-        </div>
       </div>
     </div>
   )
@@ -2661,7 +2656,14 @@ function StatsTicker() {
 
   return (
     <section ref={sectionRef} className="py-10 px-5" style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-      <div className="max-w-3xl mx-auto grid grid-cols-3 gap-4">
+      <div
+        className="max-w-3xl mx-auto grid grid-cols-3 gap-4"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? 'translateY(0)' : 'translateY(16px)',
+          transition: 'opacity 0.6s var(--ease), transform 0.6s var(--ease)',
+        }}
+      >
         {stats.map(stat => (
           <div key={stat.label} className="text-center">
             <div style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 'clamp(24px, 4vw, 32px)', color: 'var(--primary)' }}>
@@ -3209,7 +3211,7 @@ function TourJourneyFlow() {
                   cursor: activeStop === 0 ? 'not-allowed' : 'pointer',
                 }}
               >
-                ← Previous
+                Previous
               </button>
 
               {/* Dot indicators */}
@@ -3241,7 +3243,7 @@ function TourJourneyFlow() {
                   cursor: activeStop === JOURNEY_STOPS.length - 1 ? 'not-allowed' : 'pointer',
                 }}
               >
-                Next →
+                Next
               </button>
             </div>
           </div>
@@ -3263,7 +3265,7 @@ function TourJourneyFlow() {
               boxShadow: '0 8px 32px rgba(196,98,45,0.35)',
             }}
           >
-            Browse Tour Packages →
+            Browse Tour Packages
           </a>
         </div>
       </div>
@@ -3341,13 +3343,13 @@ function ExperienceCategories({ onNavigate }: { onNavigate: (v: View) => void })
               Explore By Experience
             </div>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(26px, 3.5vw, 38px)', color: 'var(--foreground)', lineHeight: 1.2 }}>
-              How do you want to<br /><em>feel alive?</em>
+              How do you want to feel alive?
             </h2>
           </div>
           <button onClick={() => onNavigate('explore')}
             className="hidden md:flex items-center gap-2 text-sm font-medium hover:opacity-70 transition-opacity"
             style={{ color: 'var(--secondary)', fontFamily: 'Outfit, sans-serif' }}>
-            View all →
+            View all
           </button>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
@@ -3508,7 +3510,7 @@ function ExploreScreen({ onSelectTour }: { onSelectTour: (t: Tour) => void }) {
             Discover Tanzania
           </p>
           <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(24px, 4vw, 38px)', color: '#f5f0e8', lineHeight: 1.2, marginBottom: 16 }}>
-            Where will your story<br /><em style={{ color: '#d4a017' }}>take you?</em>
+            Where will your story take you?
           </h1>
           {/* Search bar */}
           <div className="relative">
@@ -3571,8 +3573,7 @@ function ExploreScreen({ onSelectTour }: { onSelectTour: (t: Tour) => void }) {
             <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, color: 'var(--foreground)', marginBottom: 8 }}>No tours found</h3>
             <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: 'var(--muted-foreground)' }}>Try a different search or filter.</p>
             <button onClick={() => { setSearch(''); setActiveFilter('All') }}
-              className="mt-6 px-6 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90"
-              style={{ backgroundColor: 'var(--primary)', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
+              className="btn btn-primary mt-6">
               Clear filters
             </button>
           </div>
@@ -3580,8 +3581,7 @@ function ExploreScreen({ onSelectTour }: { onSelectTour: (t: Tour) => void }) {
           <div className="flex flex-col gap-4">
             {filtered.map(t => (
               <button key={t.id} onClick={() => onSelectTour(t)}
-                className="flex gap-4 rounded-2xl overflow-hidden text-left hover:shadow-md transition-shadow"
-                style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+                className="card-surface interactive flex gap-4 overflow-hidden text-left">
                 <img src={t.image} alt={t.name} className="w-28 md:w-40 flex-shrink-0 object-cover" style={{ height: 120 }} />
                 <div className="flex-1 p-4 flex flex-col justify-between">
                   <div>
@@ -3592,7 +3592,7 @@ function ExploreScreen({ onSelectTour }: { onSelectTour: (t: Tour) => void }) {
                   </div>
                   <div className="flex items-center justify-between mt-2">
                     <span style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, fontWeight: 600, color: 'var(--primary)' }}>From ${t.price.toLocaleString()}</span>
-                    <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--secondary)' }}>View trip →</span>
+                    <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--secondary)' }}>View trip</span>
                   </div>
                 </div>
               </button>
@@ -3705,13 +3705,11 @@ function PlanScreen({ onNavigate }: { onNavigate: (v: View) => void }) {
 
           <div className="space-y-3">
             <button onClick={() => onNavigate('explore')}
-              className="w-full py-4 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: 'var(--primary)', color: 'white', fontFamily: 'Outfit, sans-serif', fontSize: 15 }}>
-              Build My Journey →
+              className="btn btn-primary w-full" style={{ fontSize: 15 }}>
+              Build My Journey
             </button>
             <button onClick={() => { setStep(1); setGenerated(false); setDestinations([]); setMonth(''); setInterests([]); setStyle('') }}
-              className="w-full py-3 rounded-xl font-medium text-sm hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif' }}>
+              className="btn btn-outline w-full">
               Start over
             </button>
           </div>
@@ -3856,17 +3854,15 @@ function PlanScreen({ onNavigate }: { onNavigate: (v: View) => void }) {
         <div className="flex gap-3 mt-10">
           {step > 1 && (
             <button onClick={() => setStep(s => s - 1)}
-              className="flex-1 py-3.5 rounded-xl text-sm font-semibold hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif' }}>
-              ← Back
+              className="btn btn-outline flex-1">
+              Back
             </button>
           )}
           <button
             onClick={() => step === totalSteps ? setGenerated(true) : setStep(s => s + 1)}
             disabled={!canNext()}
-            className="flex-1 py-3.5 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ backgroundColor: 'var(--primary)', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
-            {step === totalSteps ? 'Generate My Trip ✨' : 'Continue →'}
+            className="btn btn-primary flex-1 disabled:opacity-40">
+            {step === totalSteps ? 'Generate My Trip ✨' : 'Continue'}
           </button>
         </div>
       </div>
@@ -3897,7 +3893,7 @@ const CHECKLIST_ITEMS = [
   { label: 'USD cash prepared', done: false },
 ]
 
-function TripsScreen({ booking, onNavigate }: { booking: Booking | null; onNavigate: (v: View) => void }) {
+function TripsScreen({ booking, onNavigate, onCompletePayment }: { booking: Booking | null; onNavigate: (v: View) => void; onCompletePayment: () => void }) {
   const [checkDone, setCheckDone] = useState<boolean[]>(CHECKLIST_ITEMS.map(i => i.done))
   const completedCount = checkDone.filter(Boolean).length
 
@@ -3952,7 +3948,32 @@ function TripsScreen({ booking, onNavigate }: { booking: Booking | null; onNavig
           </div>
         </div>
 
-        {/* Today */}
+        {booking && booking.paymentStatus !== 'unpaid' && (
+          <div className="rounded-2xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap"
+            style={{
+              backgroundColor: booking.paymentStatus === 'paid' ? 'rgba(22,163,74,0.08)' : 'rgba(212,160,23,0.1)',
+              border: `1px solid ${booking.paymentStatus === 'paid' ? 'rgba(22,163,74,0.3)' : 'rgba(212,160,23,0.4)'}`,
+            }}>
+            <div className="flex items-center gap-3">
+              <span style={{ fontSize: 20 }}>{booking.paymentStatus === 'paid' ? '✅' : '⏳'}</span>
+              <div>
+                <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>
+                  {booking.paymentStatus === 'paid' ? 'Payment complete' : 'Payment pending'}
+                </div>
+                <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)' }}>
+                  {booking.paymentStatus === 'paid'
+                    ? `$${booking.total.toLocaleString()} paid · your spot is confirmed`
+                    : `$${booking.total.toLocaleString()} due · your spot is reserved but not yet paid`}
+                </div>
+              </div>
+            </div>
+            {booking.paymentStatus === 'pending' && (
+              <button onClick={onCompletePayment} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: 13 }}>
+                Complete Payment
+              </button>
+            )}
+          </div>
+        )}
         <div className="rounded-2xl border overflow-hidden mb-6" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
           <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(26,58,42,0.06)' }}>
             <div>
@@ -4023,9 +4044,8 @@ function TripsScreen({ booking, onNavigate }: { booking: Booking | null; onNavig
             <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 20, color: 'var(--foreground)', marginBottom: 8 }}>No trip booked yet</h3>
             <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: 'var(--muted-foreground)', marginBottom: 16 }}>Browse our tours and start planning your African adventure.</p>
             <button onClick={() => onNavigate('explore')}
-              className="px-6 py-3 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: 'var(--primary)', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
-              Explore Tours →
+              className="btn btn-primary">
+              Explore Tours
             </button>
           </div>
         )}
@@ -4048,8 +4068,7 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
           Create an account to save trips, view your booking history, and get personalized recommendations.
         </p>
         <button onClick={onRegister}
-          className="mt-6 px-6 py-3 rounded-full text-white font-semibold"
-          style={{ backgroundColor: 'var(--primary)', fontFamily: 'Outfit, sans-serif' }}>
+          className="btn btn-primary mt-6">
           Create Account / Sign In
         </button>
       </div>
@@ -4093,8 +4112,7 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
       <div className="max-w-2xl mx-auto px-5 md:px-8 py-6 space-y-2">
         {menuItems.map(item => (
           <button key={item.label} onClick={item.action}
-            className="w-full flex items-center gap-4 p-4 rounded-2xl text-left hover:shadow-sm transition-shadow"
-            style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+            className="card-surface interactive w-full flex items-center gap-4 p-4 text-left">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
               style={{ backgroundColor: 'rgba(26,58,42,0.06)' }}>{item.icon}</div>
             <div className="flex-1">
@@ -4111,8 +4129,8 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
           <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'rgba(245,240,232,0.65)', marginBottom: 14 }}>Our travel concierge team is available 24/7 for you.</p>
           <div className="flex gap-2">
             {[{ icon: '📞', label: 'Call Us' }, { icon: '💬', label: 'WhatsApp' }].map(btn => (
-              <button key={btn.label} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#f5f0e8', border: '1px solid rgba(255,255,255,0.2)', fontFamily: 'Outfit, sans-serif' }}>
+              <button key={btn.label} className="btn"
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#f5f0e8', border: '1px solid rgba(255,255,255,0.2)', boxShadow: 'none', padding: '9px 16px', fontSize: 13 }}>
                 {btn.icon} {btn.label}
               </button>
             ))}
@@ -4120,8 +4138,7 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
         </div>
 
         <button onClick={onLogout}
-          className="w-full py-3.5 rounded-xl text-sm font-semibold hover:opacity-80 transition-opacity mt-2"
-          style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif' }}>
+          className="btn btn-outline w-full mt-2">
           Sign Out
         </button>
       </div>
@@ -4132,8 +4149,31 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [userName, setUserName] = useState<string | null>(null)
-  const [booking, setBooking] = useState<Booking | null>(null)
+  const [userName, setUserName] = useState<string | null>(() => {
+    try { return localStorage.getItem('hmw_userName') } catch { return null }
+  })
+  const [booking, setBooking] = useState<Booking | null>(() => {
+    try {
+      const raw = localStorage.getItem('hmw_booking')
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      return { ...parsed, paymentStatus: parsed.paymentStatus ?? 'unpaid' }
+    } catch { return null }
+  })
+
+  useEffect(() => {
+    try {
+      if (userName) localStorage.setItem('hmw_userName', userName)
+      else localStorage.removeItem('hmw_userName')
+    } catch { /* localStorage unavailable — booking still works, just won't survive a refresh */ }
+  }, [userName])
+
+  useEffect(() => {
+    try {
+      if (booking) localStorage.setItem('hmw_booking', JSON.stringify(booking))
+      else localStorage.removeItem('hmw_booking')
+    } catch { /* localStorage unavailable — booking still works, just won't survive a refresh */ }
+  }, [booking])
   const [view, setView] = useState<View>('home')
   const [activeCategory, setActiveCategory] = useState<Category>('safari')
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
@@ -4243,7 +4283,7 @@ export default function App() {
       {view === 'plan' && <PlanScreen onNavigate={navigate} />}
 
       {/* ── My Trips ── */}
-      {view === 'trips' && <TripsScreen booking={booking} onNavigate={navigate} />}
+      {view === 'trips' && <TripsScreen booking={booking} onNavigate={navigate} onCompletePayment={() => setModal({ type: 'payment' })} />}
 
       {/* ── Profile ── */}
       {view === 'profile' && (
@@ -4264,7 +4304,21 @@ export default function App() {
         <TourModal tour={modal.tour} onClose={closeModal} onBook={() => setModal({ type: 'booking', tour: modal.tour })} />
       )}
       {modal.type === 'booking' && (
-        <BookingModal tour={modal.tour} onClose={closeModal} onBooked={b => { setBooking(b); setModal({ type: 'none' }); navigate('trips') }} />
+        <BookingModal
+          tour={modal.tour}
+          userName={userName}
+          onClose={closeModal}
+          onAuth={name => setUserName(name)}
+          onBooked={b => { setBooking(b); setModal({ type: 'none' }); navigate('trips') }}
+          onPayIntent={b => { setBooking(b); setModal({ type: 'payment' }) }}
+        />
+      )}
+      {modal.type === 'payment' && booking && (
+        <PaymentModal
+          booking={booking}
+          onCancel={() => { setModal({ type: 'none' }); navigate('trips') }}
+          onPaid={() => { setBooking({ ...booking, paymentStatus: 'paid' }); setModal({ type: 'none' }); navigate('trips') }}
+        />
       )}
       {modal.type === 'register' && <RegisterModal onClose={closeModal} onAuth={name => setUserName(name)} />}
     </div>
