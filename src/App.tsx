@@ -1683,27 +1683,108 @@ function InlineAuthForm({ onAuth, onCancel }: { onAuth: (name: string) => void; 
 
 // ─── Payment Modal ──────────────────────────────────────────────────────────
 // NOTE: no real payment provider is wired up yet (Stripe/Paystack TBD — see project
-// backlog). This deliberately does NOT collect card details, since a fake card-entry
-// form with no real processor behind it would be misleading to a real customer.
-// Swap the `handlePay` body for a real charge call (via a backend/Netlify Function —
-// never call a payment API with a secret key from the client) once a provider is chosen.
+// backlog). The card fields below are a VISUAL PREVIEW ONLY — nothing typed here is
+// sent anywhere, stored in state that persists, or saved to localStorage/the booking
+// record. Before going live, replace this with Stripe Elements or Paystack Inline
+// (hosted, tokenized fields) — real integrations should never let raw card numbers
+// touch your own inputs/servers at all, which is what keeps you out of PCI scope.
+// Swap the `handlePay` body for a real charge call made from a backend/Netlify
+// Function — never call a payment API with a secret key from the client.
+//
+// The passport/travel-document section is the same: preview only, held in local
+// component state and discarded when this modal closes. Do not wire this to
+// localStorage — ID documents need encrypted, access-controlled backend storage
+// (e.g. Supabase Storage with row-level security), not the browser.
+
+function luhnCheck(num: string) {
+  const digits = num.replace(/\D/g, '')
+  if (digits.length < 13) return false
+  let sum = 0, shouldDouble = false
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = parseInt(digits[i])
+    if (shouldDouble) { d *= 2; if (d > 9) d -= 9 }
+    sum += d
+    shouldDouble = !shouldDouble
+  }
+  return sum % 10 === 0
+}
+
+function formatCardNumber(v: string) {
+  return v.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim()
+}
+
+function formatExpiry(v: string) {
+  const d = v.replace(/\D/g, '').slice(0, 4)
+  if (d.length <= 2) return d
+  return `${d.slice(0, 2)}/${d.slice(2)}`
+}
 
 function PaymentModal({ booking, onCancel, onPaid }: { booking: Booking; onCancel: () => void; onPaid: () => void }) {
   const [processing, setProcessing] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Card fields — preview only, never persisted (see note above).
+  const [card, setCard] = useState({ number: '', name: '', expiry: '', cvc: '' })
+
+  // Passport/travel document — preview only, never persisted (see note above).
+  const [addDoc, setAddDoc] = useState(false)
+  const [doc, setDoc] = useState({ passportNumber: '', nationality: '', file: null as File | null, previewUrl: '' })
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+    return () => {
+      document.body.style.overflow = ''
+      if (doc.previewUrl) URL.revokeObjectURL(doc.previewUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const handleFile = (file: File | null) => {
+    if (doc.previewUrl) URL.revokeObjectURL(doc.previewUrl)
+    setDoc(d => ({ ...d, file, previewUrl: file ? URL.createObjectURL(file) : '' }))
+  }
+
+  const validate = () => {
+    const next: Record<string, string> = {}
+    const digits = card.number.replace(/\D/g, '')
+    if (digits.length < 13 || digits.length > 19 || !luhnCheck(digits)) {
+      next.number = 'Enter a valid card number.'
+    }
+    if (card.name.trim().length < 2) {
+      next.name = 'Enter the name on the card.'
+    }
+    const [mm, yy] = card.expiry.split('/')
+    const now = new Date()
+    const expValid = mm && yy && +mm >= 1 && +mm <= 12 &&
+      (2000 + +yy > now.getFullYear() || (2000 + +yy === now.getFullYear() && +mm >= now.getMonth() + 1))
+    if (!expValid) {
+      next.expiry = 'Enter a valid future expiry (MM/YY).'
+    }
+    if (!/^\d{3,4}$/.test(card.cvc)) {
+      next.cvc = 'Enter a valid CVC.'
+    }
+    if (addDoc) {
+      if (doc.passportNumber.trim().length < 4) next.passportNumber = 'Enter your passport number.'
+      if (doc.nationality.trim().length < 2) next.nationality = 'Enter your nationality.'
+    }
+    setErrors(next)
+    return Object.keys(next).length === 0
+  }
+
   const handlePay = () => {
+    if (!validate()) return
     setProcessing(true)
+    // Simulated only — see note at top of file for what a real integration replaces this with.
     setTimeout(onPaid, 1400)
   }
 
+  const inputCls = (key: string) =>
+    `w-full px-3 py-2.5 text-sm rounded-lg border outline-none focus:ring-2 transition-all ${errors[key] ? 'field-error' : ''}`
+  const inputStyle = { borderColor: 'var(--border)', backgroundColor: 'var(--background)' }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(28,42,30,0.6)' }}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)' }}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)', maxHeight: '92vh', overflowY: 'auto' }}>
         <div className="p-6">
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -1724,6 +1805,111 @@ function PaymentModal({ booking, onCancel, onPaid }: { booking: Booking; onCance
                 ${booking.total.toLocaleString()}
               </span>
             </div>
+          </div>
+
+          {/* Card details — preview only */}
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>Card Details</span>
+              <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>🔒 Preview only — not stored</span>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <input
+                  value={card.number}
+                  onChange={e => setCard({ ...card, number: formatCardNumber(e.target.value) })}
+                  placeholder="Card number"
+                  inputMode="numeric"
+                  className={inputCls('number')} style={inputStyle}
+                />
+                {errors.number && <p className="field-error-msg">{errors.number}</p>}
+              </div>
+              <div>
+                <input
+                  value={card.name}
+                  onChange={e => setCard({ ...card, name: e.target.value })}
+                  placeholder="Name on card"
+                  className={inputCls('name')} style={inputStyle}
+                />
+                {errors.name && <p className="field-error-msg">{errors.name}</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <input
+                    value={card.expiry}
+                    onChange={e => setCard({ ...card, expiry: formatExpiry(e.target.value) })}
+                    placeholder="MM/YY"
+                    inputMode="numeric"
+                    className={inputCls('expiry')} style={inputStyle}
+                  />
+                  {errors.expiry && <p className="field-error-msg">{errors.expiry}</p>}
+                </div>
+                <div>
+                  <input
+                    value={card.cvc}
+                    onChange={e => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    placeholder="CVC"
+                    inputMode="numeric"
+                    className={inputCls('cvc')} style={inputStyle}
+                  />
+                  {errors.cvc && <p className="field-error-msg">{errors.cvc}</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Travel document — optional, preview only */}
+          <div className="mb-5">
+            <label className="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" checked={addDoc} onChange={e => setAddDoc(e.target.checked)} />
+              <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
+                Add passport details (optional, for international bookings)
+              </span>
+            </label>
+            {addDoc && (
+              <div className="space-y-3 rounded-xl p-3" style={{ backgroundColor: 'var(--muted)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+                  Preview only for now — nothing here is saved yet. Secure document storage is on the roadmap;
+                  for a real booking, our team will request this separately by email.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <input
+                      value={doc.passportNumber}
+                      onChange={e => setDoc({ ...doc, passportNumber: e.target.value })}
+                      placeholder="Passport number"
+                      className={inputCls('passportNumber')} style={inputStyle}
+                    />
+                    {errors.passportNumber && <p className="field-error-msg">{errors.passportNumber}</p>}
+                  </div>
+                  <div>
+                    <input
+                      value={doc.nationality}
+                      onChange={e => setDoc({ ...doc, nationality: e.target.value })}
+                      placeholder="Nationality"
+                      className={inputCls('nationality')} style={inputStyle}
+                    />
+                    {errors.nationality && <p className="field-error-msg">{errors.nationality}</p>}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Passport photo page</label>
+                  {doc.previewUrl ? (
+                    <div className="flex items-center gap-3">
+                      <img src={doc.previewUrl} alt="Passport preview" className="w-20 h-14 object-cover rounded-lg border" style={{ borderColor: 'var(--border)' }} />
+                      <button type="button" onClick={() => handleFile(null)} className="text-xs" style={{ color: 'var(--secondary)' }}>Remove</button>
+                    </div>
+                  ) : (
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={e => handleFile(e.target.files?.[0] || null)}
+                      className="w-full text-xs"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
