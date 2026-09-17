@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { jsPDF } from 'jspdf'
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -1388,18 +1389,16 @@ function TourModal({ tour, onClose, onBook }: { tour: Tour; onClose: () => void;
 // ─── Booking Modal ────────────────────────────────────────────────────────────
 
 function BookingModal({
-  tour, userName, onClose, onBooked, onPayIntent, onAuth,
+  tour, userName, onClose, onPayIntent, onAuth,
 }: {
   tour: Tour
   userName: string | null
   onClose: () => void
-  onBooked: (b: Booking) => void
   onPayIntent: (b: Booking) => void
   onAuth: (name: string) => void
 }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', date: '', guests: '2', notes: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [submitted, setSubmitted] = useState(false)
   const [showAuth, setShowAuth] = useState(false)
   const [pendingAction, setPendingAction] = useState<'pay' | null>(null)
 
@@ -1445,13 +1444,6 @@ function BookingModal({
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validate()) return
-    setSubmitted(true)
-    setTimeout(() => onBooked(buildBooking('unpaid')), 1200)
-  }
-
   const handlePayNow = () => {
     if (!validate()) return
     if (!userName) {
@@ -1483,21 +1475,11 @@ function BookingModal({
           <IconClose />
         </button>
 
-        {submitted ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5"
-              style={{ backgroundColor: 'var(--primary)' }}>
-              <span className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full inline-block" style={{ animation: 'spin 0.8s linear infinite', borderWidth: 3 }} />
-            </div>
-            <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22 }} className="mb-2">Confirming your booking…</h2>
-            <p className="text-muted-foreground text-sm">Securing your adventure with our Arusha team.</p>
-          </div>
-        ) : (
-          <>
+        <>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22 }} className="mb-1">Book Your Adventure</h2>
             <p className="text-sm text-muted-foreground mb-6">{tour.name} — from ${tour.price.toLocaleString()}/person</p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handlePayNow() }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Full Name *</label>
@@ -1587,23 +1569,6 @@ function BookingModal({
 
               <button
                 type="submit"
-                className="btn btn-secondary w-full"
-              >
-                Send Enquiry
-              </button>
-              <p className="text-xs text-center text-muted-foreground">
-                No payment now — our team will confirm availability and send a detailed proposal.
-              </p>
-
-              <div className="flex items-center gap-3 my-1">
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
-                <span className="text-xs text-muted-foreground">or</span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border)' }} />
-              </div>
-
-              <button
-                type="button"
-                onClick={handlePayNow}
                 className="btn btn-primary w-full"
               >
                 Pay &amp; Reserve Now
@@ -1614,8 +1579,7 @@ function BookingModal({
                   : 'Requires a quick sign-in so your reservation is saved to your account.'}
               </p>
             </form>
-          </>
-        )}
+        </>
       </div>
 
       {showAuth && (
@@ -1917,11 +1881,8 @@ function PaymentModal({ booking, onCancel, onPaid }: { booking: Booking; onCance
             confirms your spot — your card is never charged twice, and you can also finish this later from My Trips.
           </p>
 
-          <button onClick={handlePay} disabled={processing} className="btn btn-secondary w-full mb-2">
+          <button onClick={handlePay} disabled={processing} className="btn btn-secondary w-full">
             {processing ? 'Processing…' : `Pay $${booking.total.toLocaleString()} Securely`}
-          </button>
-          <button onClick={onCancel} disabled={processing} className="btn btn-outline w-full">
-            Pay Later
           </button>
         </div>
       </div>
@@ -1962,7 +1923,7 @@ function BookedPage({ booking, onBack, onLogout, userName }: { booking: Booking;
         scrolled={scrolled}
         userName={userName}
       />
-      {showRegister && <RegisterModal onClose={() => setShowRegister(false)} />}
+      {showRegister && <RegisterModal onClose={() => setShowRegister(false)} onAuth={() => setShowRegister(false)} />}
 
       {/* ── Account Tab ── */}
       {activeTab === 'account' && (
@@ -2616,7 +2577,7 @@ function RegisterModal({ onClose, onAuth }: { onClose: () => void; onAuth: (name
 
 function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scrolled, userName }: {
   onRegister: () => void; onLogout?: () => void; onHome?: () => void; onNavLink?: (id: string) => void;
-  view?: View; onNavigate?: (v: View) => void; scrolled: boolean; userName?: string
+  view?: View; onNavigate?: (v: View) => void; scrolled: boolean; userName?: string | null
 }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const solid = scrolled || (view && view !== 'home')
@@ -2751,17 +2712,53 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
+const HERO_IMAGES = [
+  { src: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Elephant herd at golden hour on the Tanzanian savanna' },
+  { src: 'https://images.unsplash.com/photo-1602410125631-7e736e36797c?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Zebra grazing on the Serengeti plains' },
+  { src: 'https://images.unsplash.com/photo-1532574754390-44dc5c6780bb?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Wildebeest migration crossing the Serengeti' },
+  { src: 'https://images.unsplash.com/photo-1613864309738-9102a9e22883?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Safari vehicle among wildlife in the Serengeti' },
+  { src: 'https://images.unsplash.com/photo-1703934169695-9c91c8bc69c3?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Ngorongoro Crater landscape with wildlife' },
+  { src: 'https://images.unsplash.com/photo-1739703213318-acc03d446981?w=1920&h=1080&fit=crop&auto=format&q=85', alt: 'Wildlife roaming the Masai Mara' },
+]
+
 function Hero({ onExplore }: { onExplore: () => void }) {
+  const [active, setActive] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setActive(i => (i + 1) % HERO_IMAGES.length), 5000)
+    return () => clearInterval(id)
+  }, [])
+
   return (
     <section className="relative" style={{ height: '100vh', minHeight: 620 }}>
       <div className="absolute inset-0 bg-primary">
-        <img
-          src="https://images.unsplash.com/photo-1516426122078-c23e76319801?w=1920&h=1080&fit=crop&auto=format&q=85"
-          alt="Elephant herd at golden hour on the Tanzanian savanna"
-          className="w-full h-full object-cover"
-        />
+        {HERO_IMAGES.map((img, i) => (
+          <img
+            key={img.src}
+            src={img.src}
+            alt={img.alt}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ opacity: i === active ? 1 : 0, transition: 'opacity 1.4s ease-in-out' }}
+          />
+        ))}
       </div>
       <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/5 to-black/55" />
+
+      {/* Rotation indicator dots */}
+      <div className="absolute bottom-6 left-0 right-0 z-10 flex justify-center gap-2">
+        {HERO_IMAGES.map((img, i) => (
+          <button
+            key={img.src}
+            onClick={() => setActive(i)}
+            aria-label={`Show slide ${i + 1}`}
+            style={{
+              width: i === active ? 20 : 6, height: 6, borderRadius: 999,
+              backgroundColor: i === active ? '#f5f0e8' : 'rgba(245,240,232,0.4)',
+              transition: 'all 0.3s var(--ease)', border: 'none', cursor: 'pointer', padding: 0,
+            }}
+          />
+        ))}
+      </div>
 
       <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-5 pt-16">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6"
@@ -2858,6 +2855,36 @@ function StatsTicker() {
             <div className="text-xs md:text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>{stat.label}</div>
           </div>
         ))}
+      </div>
+    </section>
+  )
+}
+
+// ─── Wildlife Video Section ─────────────────────────────────────────────────
+// Video source: Mixkit ("Herds of African animals on a vast plain"), free for
+// commercial use under the Mixkit License, no attribution required.
+// https://mixkit.co/free-stock-video/herds-of-african-animals-on-a-vast-plain-11239/
+
+function WildlifeVideoSection() {
+  return (
+    <section className="relative overflow-hidden" style={{ height: 'clamp(360px, 55vh, 560px)' }}>
+      <video
+        className="absolute inset-0 w-full h-full object-cover"
+        src="https://assets.mixkit.co/videos/11239/11239-360.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(26,42,30,0.55), rgba(26,42,30,0.35) 40%, rgba(26,42,30,0.65))' }} />
+      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-5">
+        <span className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: '#f5d062' }}>
+          Filmed on location
+        </span>
+        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(26px, 4vw, 42px)', color: '#f5f0e8', maxWidth: 640, lineHeight: 1.25 }}>
+          This is what waits for you on the plains of Tanzania
+        </h2>
       </div>
     </section>
   )
@@ -3785,7 +3812,7 @@ function ExploreScreen({ onSelectTour }: { onSelectTour: (t: Tour) => void }) {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 md:gap-2">
             {filtered.map(t => (
               <TourCard key={t.id} tour={t} onSelect={() => onSelectTour(t)} />
             ))}
@@ -4079,18 +4106,317 @@ const CHECKLIST_ITEMS = [
   { label: 'USD cash prepared', done: false },
 ]
 
-function TripsScreen({ booking, onNavigate, onCompletePayment }: { booking: Booking | null; onNavigate: (v: View) => void; onCompletePayment: () => void }) {
+function computeTripStatus(b: Booking): 'upcoming' | 'ongoing' | 'completed' {
+  if (!b.date) return 'upcoming'
+  const start = new Date(b.date)
+  const today = new Date(new Date().toDateString())
+  const daysMatch = b.tour.duration.match(/(\d+)/)
+  const days = daysMatch ? parseInt(daysMatch[1]) : 1
+  const end = new Date(start)
+  end.setDate(end.getDate() + Math.max(days, 1))
+  if (today < start) return 'upcoming'
+  if (today >= start && today <= end) return 'ongoing'
+  return 'completed'
+}
+
+const TRIP_STATUS_LABEL: Record<ReturnType<typeof computeTripStatus>, string> = {
+  upcoming: 'Upcoming',
+  ongoing: 'Ongoing',
+  completed: 'Completed',
+}
+const TRIP_STATUS_COLOR: Record<ReturnType<typeof computeTripStatus>, string> = {
+  upcoming: '#c4622d',
+  ongoing: '#16a34a',
+  completed: '#6b5a45',
+}
+
+function downloadItineraryPDF(b: Booking) {
+  const doc = new jsPDF()
+  const green: [number, number, number] = [26, 58, 42]
+  const gold: [number, number, number] = [212, 160, 23]
+  const grey: [number, number, number] = [107, 90, 69]
+
+  doc.setFillColor(...green)
+  doc.rect(0, 0, 210, 32, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(18)
+  doc.text('HakunaMatataWorld', 15, 15)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text('Trip Itinerary & Booking Confirmation', 15, 23)
+
+  let y = 44
+  doc.setTextColor(...green)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(15)
+  doc.text(b.tour.name, 15, y)
+  y += 8
+
+  doc.setTextColor(...grey)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  const details: [string, string][] = [
+    ['Booking Ref', b.ref],
+    ['Traveller', b.name],
+    ['Email', b.email],
+    ['Start Date', b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
+    ['Duration', b.tour.duration],
+    ['Guests', String(b.guests)],
+    ['Total', `$${b.total.toLocaleString()}`],
+    ['Payment Status', b.paymentStatus === 'paid' ? 'Paid' : 'Pending'],
+  ]
+  details.forEach(([label, value]) => {
+    doc.setFont('helvetica', 'bold')
+    doc.text(`${label}:`, 15, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(value, 60, y)
+    y += 6
+  })
+
+  y += 6
+  doc.setDrawColor(...gold)
+  doc.setLineWidth(0.5)
+  doc.line(15, y, 195, y)
+  y += 10
+
+  doc.setTextColor(...green)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.text('Trip Highlights', 15, y)
+  y += 7
+  doc.setTextColor(...grey)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  b.tour.highlights.forEach(h => {
+    doc.text(`•  ${h}`, 18, y)
+    y += 6
+  })
+
+  y += 6
+  doc.setTextColor(...green)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.text('Pre-Departure Checklist', 15, y)
+  y += 7
+  doc.setTextColor(...grey)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  CHECKLIST_ITEMS.forEach(item => {
+    doc.text(`[ ]  ${item.label}`, 18, y)
+    y += 6
+  })
+
+  y += 10
+  doc.setFontSize(8)
+  doc.setTextColor(160, 160, 160)
+  doc.text('Questions? Reach our Arusha team any time — this itinerary was generated by HakunaMatataWorld.', 15, y)
+
+  doc.save(`HakunaMatataWorld-Itinerary-${b.ref}.pdf`)
+}
+
+function buildReceiptMailto(b: Booking) {
+  const subject = encodeURIComponent(`Your HakunaMatataWorld Payment Receipt — ${b.ref}`)
+  const body = encodeURIComponent(
+    `Payment Receipt — HakunaMatataWorld\n\n` +
+    `Booking Ref: ${b.ref}\n` +
+    `Trip: ${b.tour.name}\n` +
+    `Traveller: ${b.name}\n` +
+    `Date: ${b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}\n` +
+    `Guests: ${b.guests}\n` +
+    `Amount Paid: $${b.total.toLocaleString()}\n` +
+    `Status: ${b.paymentStatus === 'paid' ? 'Paid' : 'Pending'}\n\n` +
+    `Thank you for booking with HakunaMatataWorld.`
+  )
+  return `mailto:${b.email}?subject=${subject}&body=${body}`
+}
+
+// ─── Trip Detail Modal ──────────────────────────────────────────────────────
+// NOTE: "Email Receipt" opens the traveller's own mail app with the receipt
+// pre-filled — there is no backend yet to send mail automatically on payment.
+// A real "auto-send on payment" flow needs a backend (Netlify Function + an
+// email API like Resend/SendGrid), triggered server-side, not from the browser.
+
+function TripDetailModal({ booking, onClose }: { booking: Booking; onClose: () => void }) {
   const [checkDone, setCheckDone] = useState<boolean[]>(CHECKLIST_ITEMS.map(i => i.done))
+  const status = computeTripStatus(booking)
   const completedCount = checkDone.filter(Boolean).length
 
-  const demoTour = booking?.tour || tours.find(t => t.id === 's1')!
-  const ref = booking?.ref || 'HMW-DEMO'
-  const departureDate = booking?.date ? new Date(booking.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Aug 18, 2025'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(28,42,30,0.6)' }}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div className="relative" style={{ height: 140 }}>
+          <img src={booking.tour.image} alt={booking.tour.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.6))' }} />
+          <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
+            <IconClose />
+          </button>
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: TRIP_STATUS_COLOR[status], color: 'white' }}>
+              {TRIP_STATUS_LABEL[status]}
+            </span>
+            <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 19, color: '#f5f0e8', marginTop: 6 }}>{booking.tour.name}</h2>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {/* Booking summary */}
+          <div className="grid grid-cols-2 gap-3 mb-5 text-sm">
+            <div><span className="text-muted-foreground text-xs">Ref</span><div style={{ fontWeight: 600 }}>{booking.ref}</div></div>
+            <div><span className="text-muted-foreground text-xs">Date</span><div style={{ fontWeight: 600 }}>{booking.date ? new Date(booking.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div></div>
+            <div><span className="text-muted-foreground text-xs">Guests</span><div style={{ fontWeight: 600 }}>{booking.guests}</div></div>
+            <div><span className="text-muted-foreground text-xs">Total</span><div style={{ fontWeight: 600, color: 'var(--primary)' }}>${booking.total.toLocaleString()}</div></div>
+          </div>
+
+          {/* Payment status + actions */}
+          <div className="rounded-xl p-4 mb-5 flex items-center justify-between flex-wrap gap-3"
+            style={{ backgroundColor: booking.paymentStatus === 'paid' ? 'rgba(22,163,74,0.08)' : 'rgba(212,160,23,0.1)' }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              {booking.paymentStatus === 'paid' ? '✅ Payment complete' : '⏳ Payment pending'}
+            </span>
+            {booking.paymentStatus === 'paid' && (
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => downloadItineraryPDF(booking)} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: 12 }}>
+                  Download Itinerary
+                </button>
+                <a href={buildReceiptMailto(booking)} className="btn btn-outline" style={{ padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>
+                  Email Receipt
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Trip highlights */}
+          <div className="mb-5">
+            <h3 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Trip Highlights</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {booking.tour.highlights.map(h => (
+                <span key={h} className="px-2.5 py-1 rounded-full text-xs" style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)' }}>{h}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Checklist */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 13 }}>Pre-Departure Checklist</h3>
+              <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{completedCount}/{CHECKLIST_ITEMS.length}</span>
+            </div>
+            <div className="space-y-1.5">
+              {CHECKLIST_ITEMS.map((item, i) => (
+                <button key={i} onClick={() => setCheckDone(d => { const n = [...d]; n[i] = !n[i]; return n })}
+                  className="w-full flex items-center gap-2.5 py-1 text-left">
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: checkDone[i] ? 'var(--primary)' : 'var(--muted)', border: checkDone[i] ? 'none' : '1.5px solid var(--border)' }}>
+                    {checkDone[i] && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="4"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </div>
+                  <span style={{ fontSize: 13, color: checkDone[i] ? 'var(--muted-foreground)' : 'var(--foreground)', textDecoration: checkDone[i] ? 'line-through' : 'none' }}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TripsScreen({ bookings, onNavigate, onCompletePayment }: { bookings: Booking[]; onNavigate: (v: View) => void; onCompletePayment: (ref: string) => void }) {
+  const [checkDone, setCheckDone] = useState<boolean[]>(CHECKLIST_ITEMS.map(i => i.done))
+  const completedCount = checkDone.filter(Boolean).length
+  const [filter, setFilter] = useState<'all' | 'ongoing' | 'completed'>('all')
+  const [selectedRef, setSelectedRef] = useState<string | null>(null)
+
+  const sorted = [...bookings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  const filtered = sorted.filter(b => {
+    if (filter === 'all') return true
+    const status = computeTripStatus(b)
+    if (filter === 'ongoing') return status === 'upcoming' || status === 'ongoing'
+    return status === 'completed'
+  })
+
+  const activeTripBooking = sorted.find(b => computeTripStatus(b) === 'ongoing')
+    || sorted.find(b => computeTripStatus(b) === 'upcoming')
+
+  const demoTour = activeTripBooking?.tour || tours.find(t => t.id === 's1')!
+  const ref = activeTripBooking?.ref || 'HMW-DEMO'
+  const departureDate = activeTripBooking?.date ? new Date(activeTripBooking.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Aug 18, 2025'
 
   return (
     <div className="pt-20 pb-24 md:pb-10" style={{ minHeight: '100vh', backgroundColor: 'var(--background)' }}>
       <div className="max-w-3xl mx-auto px-5 md:px-8 py-8">
 
+        {/* Trip & payment history */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 20, color: 'var(--foreground)' }}>Trip History</h2>
+            <div className="flex gap-1.5">
+              {(['all', 'ongoing', 'completed'] as const).map(f => (
+                <button key={f} onClick={() => setFilter(f)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: filter === f ? 'var(--primary)' : 'var(--muted)',
+                    color: filter === f ? 'white' : 'var(--muted-foreground)',
+                    fontFamily: 'Outfit, sans-serif',
+                  }}>
+                  {f === 'all' ? 'All' : f === 'ongoing' ? 'Ongoing' : 'Completed'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="rounded-2xl p-6 text-center" style={{ backgroundColor: 'var(--card)', border: '1px dashed var(--border)' }}>
+              <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>
+                {bookings.length === 0 ? 'No trips booked yet.' : `No ${filter} trips.`}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map(b => {
+                const status = computeTripStatus(b)
+                return (
+                  <div key={b.ref} onClick={() => setSelectedRef(b.ref)} className="card-surface interactive flex gap-3 p-3">
+                    <img src={b.tour.image} alt={b.tour.name} className="rounded-lg object-cover flex-shrink-0" style={{ width: 72, height: 72 }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="truncate" style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>{b.tour.name}</h3>
+                          <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>
+                            {new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {b.guests} guest{b.guests > 1 ? 's' : ''} · {b.ref}
+                          </p>
+                        </div>
+                        <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ backgroundColor: `${TRIP_STATUS_COLOR[status]}1a`, color: TRIP_STATUS_COLOR[status] }}>
+                          {TRIP_STATUS_LABEL[status]}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span style={{ fontSize: 13 }}>{b.paymentStatus === 'paid' ? '✅' : b.paymentStatus === 'pending' ? '⏳' : '✉️'}</span>
+                          <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)' }}>
+                            {b.paymentStatus === 'paid' && `$${b.total.toLocaleString()} paid`}
+                            {b.paymentStatus === 'pending' && `$${b.total.toLocaleString()} due`}
+                            {b.paymentStatus === 'unpaid' && 'Enquiry sent — no payment'}
+                          </span>
+                        </div>
+                        {b.paymentStatus === 'pending' && (
+                          <button onClick={(e) => { e.stopPropagation(); onCompletePayment(b.ref) }} className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: 12 }}>
+                            Complete Payment
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {activeTripBooking && (<>
         {/* Active trip card */}
         <div className="rounded-2xl overflow-hidden mb-6" style={{ border: '1px solid var(--border)' }}>
           <div className="relative" style={{ height: 180 }}>
@@ -4134,32 +4460,6 @@ function TripsScreen({ booking, onNavigate, onCompletePayment }: { booking: Book
           </div>
         </div>
 
-        {booking && booking.paymentStatus !== 'unpaid' && (
-          <div className="rounded-2xl p-4 mb-6 flex items-center justify-between gap-3 flex-wrap"
-            style={{
-              backgroundColor: booking.paymentStatus === 'paid' ? 'rgba(22,163,74,0.08)' : 'rgba(212,160,23,0.1)',
-              border: `1px solid ${booking.paymentStatus === 'paid' ? 'rgba(22,163,74,0.3)' : 'rgba(212,160,23,0.4)'}`,
-            }}>
-            <div className="flex items-center gap-3">
-              <span style={{ fontSize: 20 }}>{booking.paymentStatus === 'paid' ? '✅' : '⏳'}</span>
-              <div>
-                <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>
-                  {booking.paymentStatus === 'paid' ? 'Payment complete' : 'Payment pending'}
-                </div>
-                <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)' }}>
-                  {booking.paymentStatus === 'paid'
-                    ? `$${booking.total.toLocaleString()} paid · your spot is confirmed`
-                    : `$${booking.total.toLocaleString()} due · your spot is reserved but not yet paid`}
-                </div>
-              </div>
-            </div>
-            {booking.paymentStatus === 'pending' && (
-              <button onClick={onCompletePayment} className="btn btn-secondary" style={{ padding: '9px 18px', fontSize: 13 }}>
-                Complete Payment
-              </button>
-            )}
-          </div>
-        )}
         <div className="rounded-2xl border overflow-hidden mb-6" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
           <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border)', backgroundColor: 'rgba(26,58,42,0.06)' }}>
             <div>
@@ -4223,8 +4523,9 @@ function TripsScreen({ booking, onNavigate, onCompletePayment }: { booking: Book
             ))}
           </div>
         </div>
+        </>)}
 
-        {!booking && (
+        {bookings.length === 0 && (
           <div className="mt-8 text-center rounded-2xl p-8 border border-dashed" style={{ borderColor: 'var(--border)' }}>
             <div className="text-3xl mb-3">🌍</div>
             <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 20, color: 'var(--foreground)', marginBottom: 8 }}>No trip booked yet</h3>
@@ -4236,13 +4537,17 @@ function TripsScreen({ booking, onNavigate, onCompletePayment }: { booking: Book
           </div>
         )}
       </div>
+
+      {selectedRef && bookings.find(b => b.ref === selectedRef) && (
+        <TripDetailModal booking={bookings.find(b => b.ref === selectedRef)!} onClose={() => setSelectedRef(null)} />
+      )}
     </div>
   )
 }
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 
-function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: { userName: string | null; booking: Booking | null; onLogout: () => void; onNavigate: (v: View) => void; onRegister: () => void }) {
+function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister }: { userName: string | null; bookings: Booking[]; onLogout: () => void; onNavigate: (v: View) => void; onRegister: () => void }) {
   if (!userName) {
     return (
       <div className="pt-20 pb-24 md:pb-10 flex flex-col items-center justify-center text-center px-5"
@@ -4261,7 +4566,7 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
     )
   }
   const menuItems = [
-    { icon: '🎫', label: 'My Bookings', sub: booking ? `1 active · ${booking.ref}` : 'No active bookings', action: () => onNavigate('trips') },
+    { icon: '🎫', label: 'My Bookings', sub: bookings.length ? `${bookings.length} trip${bookings.length > 1 ? 's' : ''} · latest ${bookings[bookings.length - 1].ref}` : 'No bookings yet', action: () => onNavigate('trips') },
     { icon: '🗺️', label: 'Tour Journey Flow', sub: 'Arusha to Zanzibar route', action: () => onNavigate('trips') },
     { icon: '❤️', label: 'Saved Trips', sub: '3 tours saved', action: () => {} },
     { icon: '📄', label: 'Travel Documents', sub: 'Passport, visa, insurance', action: () => {} },
@@ -4284,7 +4589,7 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, color: 'var(--foreground)' }}>{userName}</h2>
             <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)', marginTop: 4 }}>HakunaMatataWorld member</p>
             <div className="flex gap-4 mt-3">
-              {[{ v: booking ? '1' : '0', l: 'Trips' }, { v: '3', l: 'Saved' }, { v: '4.9★', l: 'Rating' }].map(s => (
+              {[{ v: String(bookings.length), l: 'Trips' }, { v: '3', l: 'Saved' }, { v: '4.9★', l: 'Rating' }].map(s => (
                 <div key={s.l} className="text-center">
                   <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, color: 'var(--foreground)', fontWeight: 600 }}>{s.v}</div>
                   <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: 'var(--muted-foreground)' }}>{s.l}</div>
@@ -4332,20 +4637,267 @@ function ProfileScreen({ userName, booking, onLogout, onNavigate, onRegister }: 
   )
 }
 
+// ─── Admin Dashboard ────────────────────────────────────────────────────────
+// IMPORTANT: this is a CLIENT-SIDE password gate only, not real authentication.
+// The check below ships inside the JS bundle, so anyone can read it in devtools —
+// it keeps out casual visitors, nothing else. Before this protects anything real,
+// replace it with proper backend auth (e.g. Supabase Auth with a role check).
+//
+// Data source: the same `hmw_bookings` localStorage key the public site writes to.
+// That means this only shows bookings made in THIS browser — there is no shared,
+// multi-user backend yet, so this is a local/demo view of the admin experience,
+// not a production-ready multi-user admin panel.
+
+const ADMIN_PASSWORD = 'hakuna-admin-2026' // TODO: replace with real backend auth before launch
+
+function loadAllBookings(): Booking[] {
+  try {
+    const raw = localStorage.getItem('hmw_bookings')
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.map((b: Booking) => ({ ...b, paymentStatus: b.paymentStatus ?? 'unpaid' })) : []
+  } catch { return [] }
+}
+
+function AdminLogin({ onAuthed }: { onAuthed: () => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (password === ADMIN_PASSWORD) {
+      try { sessionStorage.setItem('hmw_admin_authed', '1') } catch { /* session-only, fine if unavailable */ }
+      onAuthed()
+    } else {
+      setError('Incorrect password.')
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: '#0f1a12', fontFamily: "'Outfit', sans-serif" }}>
+      <div className="w-full max-w-sm rounded-2xl p-8" style={{ backgroundColor: '#16261a', border: '1px solid rgba(245,240,232,0.1)' }}>
+        <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-5 text-white font-bold" style={{ backgroundColor: 'var(--primary)' }}>HM</div>
+        <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, color: '#f5f0e8', textAlign: 'center', marginBottom: 4 }}>Admin</h1>
+        <p style={{ fontSize: 13, color: 'rgba(245,240,232,0.5)', textAlign: 'center', marginBottom: 24 }}>HakunaMatataWorld operations dashboard</p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Admin password"
+            autoFocus
+            className="w-full px-3 py-2.5 text-sm rounded-lg outline-none"
+            style={{ backgroundColor: 'rgba(245,240,232,0.06)', border: '1px solid rgba(245,240,232,0.15)', color: '#f5f0e8' }}
+          />
+          {error && <p style={{ color: '#e57373', fontSize: 12 }}>{error}</p>}
+          <button type="submit" className="btn btn-secondary w-full">Sign In</button>
+        </form>
+        <p style={{ fontSize: 11, color: 'rgba(245,240,232,0.35)', textAlign: 'center', marginTop: 20, lineHeight: 1.5 }}>
+          Demo password: {ADMIN_PASSWORD} — replace with real auth before launch.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const [bookings, setBookingsState] = useState<Booking[]>(loadAllBookings)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'paid'>('all')
+
+  const persist = (next: Booking[]) => {
+    setBookingsState(next)
+    try { localStorage.setItem('hmw_bookings', JSON.stringify(next)) } catch { /* best-effort */ }
+  }
+
+  const togglePaid = (ref: string) => {
+    persist(bookings.map(b => b.ref === ref ? { ...b, paymentStatus: b.paymentStatus === 'paid' ? 'pending' : 'paid' } : b))
+  }
+
+  const totalRevenue = bookings.filter(b => b.paymentStatus === 'paid').reduce((s, b) => s + b.total, 0)
+  const pendingRevenue = bookings.filter(b => b.paymentStatus === 'pending').reduce((s, b) => s + b.total, 0)
+  const totalGuests = bookings.reduce((s, b) => s + b.guests, 0)
+
+  const filtered = bookings
+    .filter(b => statusFilter === 'all' ? true : b.paymentStatus === statusFilter)
+    .filter(b => {
+      const q = search.trim().toLowerCase()
+      if (!q) return true
+      return b.name.toLowerCase().includes(q) || b.ref.toLowerCase().includes(q) || b.tour.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q)
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const statCards = [
+    { label: 'Total Bookings', value: bookings.length, icon: '🎫' },
+    { label: 'Revenue Collected', value: `$${totalRevenue.toLocaleString()}`, icon: '✅' },
+    { label: 'Revenue Pending', value: `$${pendingRevenue.toLocaleString()}`, icon: '⏳' },
+    { label: 'Total Guests', value: totalGuests, icon: '👥' },
+  ]
+
+  return (
+    <div className="min-h-screen flex" style={{ backgroundColor: '#f5f0e8', fontFamily: "'Outfit', sans-serif" }}>
+      {/* Sidebar */}
+      <aside className="hidden md:flex flex-col w-56 flex-shrink-0 p-5" style={{ backgroundColor: '#16261a' }}>
+        <div className="flex items-center gap-2 mb-10">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: 'var(--primary)' }}>HM</div>
+          <span style={{ fontFamily: 'Playfair Display, serif', color: '#f5f0e8', fontSize: 15 }}>Admin</span>
+        </div>
+        <nav className="space-y-1 flex-1">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(245,240,232,0.08)', color: '#f5f0e8', fontSize: 13, fontWeight: 600 }}>
+            <span>📊</span> Overview & Bookings
+          </div>
+        </nav>
+        <button onClick={onLogout} className="text-left px-3 py-2 rounded-lg text-sm" style={{ color: 'rgba(245,240,232,0.5)' }}>
+          ← Sign out
+        </button>
+      </aside>
+
+      <main className="flex-1 min-w-0">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-5 md:px-8 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, color: 'var(--foreground)' }}>Operations Overview</h1>
+            <p style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>Local data from this browser only — see note in source before relying on this in production.</p>
+          </div>
+          <button onClick={onLogout} className="md:hidden btn btn-outline" style={{ padding: '8px 14px', fontSize: 12 }}>Sign out</button>
+        </div>
+
+        <div className="p-5 md:p-8">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+            {statCards.map(s => (
+              <div key={s.label} className="card-surface p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span style={{ fontSize: 18 }}>{s.icon}</span>
+                </div>
+                <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, fontWeight: 600, color: 'var(--primary)' }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bookings table */}
+          <div className="card-surface overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 17, color: 'var(--foreground)' }}>All Bookings</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search name, ref, tour…"
+                  className="px-3 py-1.5 text-xs rounded-lg border outline-none"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)', minWidth: 180 }}
+                />
+                {(['all', 'pending', 'paid'] as const).map(f => (
+                  <button key={f} onClick={() => setStatusFilter(f)}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium"
+                    style={{
+                      backgroundColor: statusFilter === f ? 'var(--primary)' : 'var(--muted)',
+                      color: statusFilter === f ? 'white' : 'var(--muted-foreground)',
+                    }}>
+                    {f === 'all' ? 'All' : f === 'pending' ? 'Pending' : 'Paid'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="p-10 text-center" style={{ fontSize: 13, color: 'var(--muted-foreground)' }}>
+                No bookings match.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--muted)' }}>
+                      {['Ref', 'Guest', 'Tour', 'Date', 'Guests', 'Total', 'Status', ''].map(h => (
+                        <th key={h} className="text-left px-4 py-2.5 whitespace-nowrap" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted-foreground)', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(b => (
+                      <tr key={b.ref} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{b.ref}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{b.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{b.email}</div>
+                        </td>
+                        <td className="px-4 py-3" style={{ fontSize: 13, maxWidth: 200 }}>{b.tour.name}</td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
+                          {b.date ? new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-center" style={{ fontSize: 13 }}>{b.guests}</td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>${b.total.toLocaleString()}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{
+                              backgroundColor: b.paymentStatus === 'paid' ? 'rgba(22,163,74,0.12)' : 'rgba(212,160,23,0.15)',
+                              color: b.paymentStatus === 'paid' ? '#16a34a' : '#c4622d',
+                            }}>
+                            {b.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button onClick={() => togglePaid(b.ref)} className="text-xs font-medium" style={{ color: 'var(--secondary)' }}>
+                            Mark {b.paymentStatus === 'paid' ? 'Pending' : 'Paid'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function AdminApp() {
+  const [authed, setAuthed] = useState(() => {
+    try { return sessionStorage.getItem('hmw_admin_authed') === '1' } catch { return false }
+  })
+
+  if (!authed) return <AdminLogin onAuthed={() => setAuthed(true)} />
+  return (
+    <AdminDashboard
+      onLogout={() => {
+        try { sessionStorage.removeItem('hmw_admin_authed') } catch { /* no-op */ }
+        setAuthed(false)
+      }}
+    />
+  )
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+    return <AdminApp />
+  }
   const [userName, setUserName] = useState<string | null>(() => {
     try { return localStorage.getItem('hmw_userName') } catch { return null }
   })
-  const [booking, setBooking] = useState<Booking | null>(() => {
+  const [bookings, setBookings] = useState<Booking[]>(() => {
     try {
-      const raw = localStorage.getItem('hmw_booking')
-      if (!raw) return null
-      const parsed = JSON.parse(raw)
-      return { ...parsed, paymentStatus: parsed.paymentStatus ?? 'unpaid' }
-    } catch { return null }
+      const raw = localStorage.getItem('hmw_bookings')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed.map((b: Booking) => ({ ...b, paymentStatus: b.paymentStatus ?? 'unpaid' })) : []
+      }
+      // Migrate from the old single-booking key, if present.
+      const legacy = localStorage.getItem('hmw_booking')
+      if (legacy) {
+        const parsed = JSON.parse(legacy)
+        return [{ ...parsed, paymentStatus: parsed.paymentStatus ?? 'unpaid' }]
+      }
+      return []
+    } catch { return [] }
   })
+  const [payingRef, setPayingRef] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -4356,10 +4908,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      if (booking) localStorage.setItem('hmw_booking', JSON.stringify(booking))
-      else localStorage.removeItem('hmw_booking')
-    } catch { /* localStorage unavailable — booking still works, just won't survive a refresh */ }
-  }, [booking])
+      if (bookings.length) localStorage.setItem('hmw_bookings', JSON.stringify(bookings))
+      else localStorage.removeItem('hmw_bookings')
+      localStorage.removeItem('hmw_booking') // clean up legacy key once migrated
+    } catch { /* localStorage unavailable — history still works this session, just won't survive a refresh */ }
+  }, [bookings])
   const [view, setView] = useState<View>('home')
   const [activeCategory, setActiveCategory] = useState<Category>('safari')
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
@@ -4378,21 +4931,9 @@ export default function App() {
   const closeModal = () => setModal({ type: 'none' })
   const navigate = (v: View) => setView(v)
 
-  // BookedPage shown after real booking completion
-  if (booking && view === 'booked' as unknown as View) {
-    return (
-      <BookedPage
-        booking={booking}
-        userName={userName ?? booking.name}
-        onBack={() => { setBooking(null); setView('home') }}
-        onLogout={() => { setUserName(null); setBooking(null); setView('home') }}
-      />
-    )
-  }
-
   const navbarProps = {
     onRegister: () => setModal({ type: 'register' }),
-    onLogout: () => { setUserName(null); setBooking(null); setView('home') },
+    onLogout: () => { setUserName(null); setView('home') },
     onHome: () => navigate('home'),
     onNavLink: (id: string) => {
       if (['explore', 'plan', 'trips', 'profile'].includes(id)) { navigate(id as View); return }
@@ -4413,6 +4954,7 @@ export default function App() {
       {view === 'home' && <>
         <Hero onExplore={() => document.getElementById('tours')?.scrollIntoView({ behavior: 'smooth' })} />
         <StatsTicker />
+        <WildlifeVideoSection />
 
         <section id="tours" className="py-20 px-5 md:px-8" style={{ backgroundColor: 'var(--background)' }}>
           <div className="max-w-7xl mx-auto">
@@ -4444,7 +4986,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 md:gap-2">
               {tours.filter((t) => t.category === activeCategory).map((tour) => (
                 <TourCard key={tour.id} tour={tour} onSelect={() => setModal({ type: 'tour', tour })} />
               ))}
@@ -4469,14 +5011,20 @@ export default function App() {
       {view === 'plan' && <PlanScreen onNavigate={navigate} />}
 
       {/* ── My Trips ── */}
-      {view === 'trips' && <TripsScreen booking={booking} onNavigate={navigate} onCompletePayment={() => setModal({ type: 'payment' })} />}
+      {view === 'trips' && (
+        <TripsScreen
+          bookings={bookings}
+          onNavigate={navigate}
+          onCompletePayment={ref => { setPayingRef(ref); setModal({ type: 'payment' }) }}
+        />
+      )}
 
       {/* ── Profile ── */}
       {view === 'profile' && (
         <ProfileScreen
           userName={userName}
-          booking={booking}
-          onLogout={() => { setUserName(null); setBooking(null); setView('home') }}
+          bookings={bookings}
+          onLogout={() => { setUserName(null); setView('home') }}
           onNavigate={navigate}
           onRegister={() => setModal({ type: 'register' })}
         />
@@ -4495,15 +5043,17 @@ export default function App() {
           userName={userName}
           onClose={closeModal}
           onAuth={name => setUserName(name)}
-          onBooked={b => { setBooking(b); setModal({ type: 'none' }); navigate('trips') }}
-          onPayIntent={b => { setBooking(b); setModal({ type: 'payment' }) }}
+          onPayIntent={b => { setBookings(prev => [b, ...prev]); setPayingRef(b.ref); setModal({ type: 'payment' }) }}
         />
       )}
-      {modal.type === 'payment' && booking && (
+      {modal.type === 'payment' && bookings.find(b => b.ref === payingRef) && (
         <PaymentModal
-          booking={booking}
-          onCancel={() => { setModal({ type: 'none' }); navigate('trips') }}
-          onPaid={() => { setBooking({ ...booking, paymentStatus: 'paid' }); setModal({ type: 'none' }); navigate('trips') }}
+          booking={bookings.find(b => b.ref === payingRef)!}
+          onCancel={() => { setModal({ type: 'none' }); setPayingRef(null); navigate('trips') }}
+          onPaid={() => {
+            setBookings(prev => prev.map(b => b.ref === payingRef ? { ...b, paymentStatus: 'paid' } : b))
+            setModal({ type: 'none' }); setPayingRef(null); navigate('trips')
+          }}
         />
       )}
       {modal.type === 'register' && <RegisterModal onClose={closeModal} onAuth={name => setUserName(name)} />}
