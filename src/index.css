@@ -191,7 +191,7 @@ h1, h2, h3, h4 {
 /* 3D map beacon animations */
 @keyframes beacon-pulse {
   0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.7; }
-  100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
 }
 
 @keyframes beacon-beam-pulse {

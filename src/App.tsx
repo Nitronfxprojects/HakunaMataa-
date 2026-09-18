@@ -635,7 +635,7 @@ function TourMap3D({ tour, activeDay }: { tour: Tour; activeDay: number }) {
 
         // Wrapper — relative positioned so rings/beams anchor to it
         const wrap = document.createElement('div')
-        wrap.style.cssText = 'position:relative;width:28px;height:28px;cursor:pointer;'
+        wrap.style.cssText = 'position:relative;width:18px;height:18px;cursor:pointer;'
 
         // Pulsing ring
         const ring = document.createElement('div')
@@ -643,7 +643,7 @@ function TourMap3D({ tour, activeDay }: { tour: Tour; activeDay: number }) {
         ring.style.cssText = [
           'display:none;position:absolute;',
           'top:50%;left:50%;',
-          'width:28px;height:28px;border-radius:50%;',
+          'width:18px;height:18px;border-radius:50%;',
           `background:${bg};`,
           'transform:translate(-50%,-50%);',
           'animation:beacon-pulse 1.4s ease-out infinite;',
@@ -664,7 +664,7 @@ function TourMap3D({ tour, activeDay }: { tour: Tour; activeDay: number }) {
         beam.style.cssText = [
           'display:none;position:absolute;',
           'left:50%;bottom:100%;',
-          'width:3px;height:40px;',
+          'width:2px;height:24px;',
           'transform:translateX(-50%);',
           `background:linear-gradient(to top, ${bg}, transparent);`,
           'animation:beacon-beam-pulse 1.4s ease-in-out infinite;',
@@ -676,11 +676,11 @@ function TourMap3D({ tour, activeDay }: { tour: Tour; activeDay: number }) {
         const pin = document.createElement('div')
         pin.style.cssText = [
           'position:relative;z-index:2;',
-          'width:28px;height:28px;border-radius:50%;',
+          'width:18px;height:18px;border-radius:50%;',
           `background:${bg};`,
-          'border:2.5px solid #fff;',
+          'border:2px solid #fff;',
           'display:flex;align-items:center;justify-content:center;',
-          'color:#fff;font-size:10px;font-weight:700;',
+          'color:#fff;font-size:8px;font-weight:700;',
           "font-family:'Outfit',sans-serif;",
           'box-shadow:0 3px 10px rgba(0,0,0,0.5);',
           'transition:transform .2s ease, box-shadow .2s ease;',
@@ -1152,7 +1152,29 @@ function DifficultyBadge({ level }: { level: string }) {
 
 // ─── Tour Card ───────────────────────────────────────────────────────────────
 
+// ─── Saved Tours (real wishlist, persisted locally) ────────────────────────
+
+function useSavedTours() {
+  const [saved, setSaved] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('hmw_saved_tours')
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
+
+  useEffect(() => {
+    try { localStorage.setItem('hmw_saved_tours', JSON.stringify(saved)) } catch { /* best-effort */ }
+  }, [saved])
+
+  const isSaved = (id: string) => saved.includes(id)
+  const toggle = (id: string) => setSaved(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  return { saved, isSaved, toggle }
+}
+
 function TourCard({ tour, onSelect }: { tour: Tour; onSelect: () => void }) {
+  const { isSaved, toggle } = useSavedTours()
+  const saved = isSaved(tour.id)
   return (
     <div
       onClick={onSelect}
@@ -1173,11 +1195,20 @@ function TourCard({ tour, onSelect }: { tour: Tour; onSelect: () => void }) {
             {tour.badge}
           </span>
         )}
+        <button
+          onClick={(e) => { e.stopPropagation(); toggle(tour.id) }}
+          aria-label={saved ? 'Remove from saved trips' : 'Save this trip'}
+          className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+        >
+          <span style={{ fontSize: 15, color: saved ? '#e57373' : 'white' }}>{saved ? '♥' : '♡'}</span>
+        </button>
         <div className="absolute bottom-3 left-3 flex items-center gap-1 text-white text-xs">
           <IconMapPin />
           <span>{tour.highlights[0]}</span>
         </div>
       </div>
+
 
       <div className="p-5">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -1813,6 +1844,8 @@ function PaymentModal({ booking, onCancel, onPaid }: { booking: Booking; onCance
                     value={card.cvc}
                     onChange={e => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                     placeholder="CVC"
+                    type="password"
+                    autoComplete="off"
                     inputMode="numeric"
                     className={inputCls('cvc')} style={inputStyle}
                   />
@@ -2697,7 +2730,12 @@ function Navbar({ onRegister, onLogout, onHome, onNavLink, view, onNavigate, scr
               className="btn btn-secondary mt-2 w-full">
               Plan My Trip ✦
             </button>
-            {!userName && (
+            {userName ? (
+              <button onClick={() => { onLogout?.(); setMobileOpen(false) }}
+                className="btn btn-outline mt-1 w-full">
+                Sign out
+              </button>
+            ) : (
               <button onClick={() => { onRegister(); setMobileOpen(false) }}
                 className="btn btn-primary mt-1 w-full">
                 <IconUser /> Sign In
@@ -2917,16 +2955,16 @@ function WhyUs() {
   ]
 
   return (
-    <section id="about" className="py-20 px-5 md:px-8" style={{ backgroundColor: 'var(--primary)' }}>
+    <section id="about" className="py-20 px-5 md:px-8" style={{ backgroundColor: '#ffffff' }}>
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
+          <div className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--secondary)' }}>
             Why Choose Us
           </div>
-          <h2 className="text-white mb-3" style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(28px, 4vw, 42px)' }}>
+          <h2 className="mb-3" style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(28px, 4vw, 42px)', color: 'var(--foreground)' }}>
             A Different Kind of Safari Company
           </h2>
-          <p className="max-w-xl mx-auto" style={{ color: 'rgba(245,240,232,0.7)' }}>
+          <p className="max-w-xl mx-auto" style={{ color: 'var(--muted-foreground)' }}>
             Born in Tanzania, built on trust. Ten years of delivering exceptional experiences across East Africa.
           </p>
         </div>
@@ -2936,11 +2974,11 @@ function WhyUs() {
             <div
               key={r.title}
               className="rounded-xl p-6 transition-transform hover:-translate-y-1"
-              style={{ backgroundColor: 'rgba(245,240,232,0.06)', border: '1px solid rgba(245,240,232,0.12)' }}
+              style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}
             >
               <div className="text-3xl mb-4">{r.icon}</div>
-              <h3 className="font-semibold text-white mb-2" style={{ fontFamily: 'Playfair Display, serif', fontSize: 18 }}>{r.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(245,240,232,0.65)' }}>{r.desc}</p>
+              <h3 className="font-semibold mb-2" style={{ fontFamily: 'Playfair Display, serif', fontSize: 18, color: 'var(--foreground)' }}>{r.title}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{r.desc}</p>
             </div>
           ))}
         </div>
@@ -3011,14 +3049,17 @@ function Contact() {
 
         <div className="grid md:grid-cols-2 gap-8">
           <div className="space-y-5">
-            <h3 className="font-semibold" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }}>Tanzania Office</h3>
+            <h3 className="font-semibold" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }}>Tanzania Office (HQ)</h3>
             <div className="space-y-3 text-sm">
+              <div className="flex items-start gap-3 text-muted-foreground">
+                <IconMapPin /><span>Plot 14, Serengeti Road, Arusha, Tanzania</span>
+              </div>
               {['+255 754 744 300', '+255 766 254 433'].map((p) => (
                 <div key={p} className="flex items-center gap-3 text-muted-foreground">
                   <IconPhone /><span>{p}</span>
                 </div>
               ))}
-              {['info@africanqueenadventures.com', 'sales@africanqueenadventures.com'].map((e) => (
+              {['info@hakunamatataworld.com', 'sales@hakunamatataworld.com'].map((e) => (
                 <div key={e} className="flex items-center gap-3 text-muted-foreground">
                   <IconMail /><span>{e}</span>
                 </div>
@@ -3026,10 +3067,20 @@ function Contact() {
             </div>
 
             <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-              <h3 className="font-semibold mb-3" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }}>Hungary Office</h3>
+              <h3 className="font-semibold mb-3" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }}>USA Office</h3>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-3"><IconPhone /><span>+36 30 222 7292</span></div>
-                <div className="flex items-center gap-3"><IconMail /><span>hungary@africanqueenadventures.com</span></div>
+                <div className="flex items-start gap-3"><IconMapPin /><span>[Add USA street address], New York, NY, USA</span></div>
+                <div className="flex items-center gap-3"><IconPhone /><span>+1 (000) 000-0000</span></div>
+                <div className="flex items-center gap-3"><IconMail /><span>usa@hakunamatataworld.com</span></div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              <h3 className="font-semibold mb-3" style={{ fontFamily: 'Playfair Display, serif', fontSize: 20 }}>Nigeria Office</h3>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="flex items-start gap-3"><IconMapPin /><span>[Add Nigeria street address], Lagos, Nigeria</span></div>
+                <div className="flex items-center gap-3"><IconPhone /><span>+234 000 000 0000</span></div>
+                <div className="flex items-center gap-3"><IconMail /><span>nigeria@hakunamatataworld.com</span></div>
               </div>
             </div>
           </div>
@@ -3070,27 +3121,104 @@ function Contact() {
 
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
-function Footer({ onRegister }: { onRegister: () => void }) {
+function Footer({ onRegister, onNavigate }: { onRegister: () => void; onNavigate: (v: View) => void }) {
+  const socials = [
+    { label: 'Instagram', icon: '📷', href: '#' },
+    { label: 'Facebook', icon: '👍', href: '#' },
+    { label: 'TikTok', icon: '🎵', href: '#' },
+    { label: 'WhatsApp', icon: '💬', href: '#' },
+  ]
+
   return (
-    <footer className="py-10 px-5 md:px-8 border-t" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
-            style={{ backgroundColor: 'var(--primary)' }}>HM</div>
-          <span style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 15, color: 'var(--foreground)' }}>
-            HakunaMatataWorld
-          </span>
+    <footer className="pt-16 pb-8 px-5 md:px-8 border-t" style={{ borderColor: 'var(--border)', backgroundColor: '#ffffff' }}>
+      <div className="max-w-6xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
+          {/* Brand */}
+          <div className="col-span-2 md:col-span-1">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ backgroundColor: 'var(--primary)' }}>HM</div>
+              <span style={{ fontFamily: 'Playfair Display, serif', fontWeight: 600, fontSize: 16, color: 'var(--foreground)' }}>
+                HakunaMatataWorld
+              </span>
+            </div>
+            <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.6, marginBottom: 16 }}>
+              Bespoke East African safaris, Kilimanjaro expeditions, and Zanzibar escapes — 10+ years crafting journeys from our Arusha base.
+            </p>
+            <div className="flex gap-2">
+              {socials.map(s => (
+                <a key={s.label} href={s.href} aria-label={s.label}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-colors"
+                  style={{ backgroundColor: 'var(--muted)' }}>
+                  {s.icon}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick links */}
+          <div>
+            <h4 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--foreground)', marginBottom: 14 }}>
+              Explore
+            </h4>
+            <div className="flex flex-col gap-2.5">
+              {[
+                { label: 'Home', v: 'home' as View },
+                { label: 'All Tours', v: 'explore' as View },
+                { label: 'Plan a Trip', v: 'plan' as View },
+                { label: 'My Trips', v: 'trips' as View },
+              ].map(l => (
+                <button key={l.label} onClick={() => onNavigate(l.v)} className="text-left"
+                  style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Company */}
+          <div>
+            <h4 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--foreground)', marginBottom: 14 }}>
+              Company
+            </h4>
+            <div className="flex flex-col gap-2.5">
+              <button onClick={onRegister} className="text-left" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>Create Account</button>
+              <a href="#contact" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>Contact Us</a>
+              <a href="#" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>Privacy Policy</a>
+              <a href="#" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)' }}>Terms of Service</a>
+            </div>
+          </div>
+
+          {/* Offices */}
+          <div>
+            <h4 style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--foreground)', marginBottom: 14 }}>
+              Our Offices
+            </h4>
+            <div className="space-y-3" style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--foreground)' }}>Tanzania (HQ)</div>
+                Plot 14, Serengeti Road, Arusha
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--foreground)' }}>USA</div>
+                New York, NY — [add address]
+              </div>
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--foreground)' }}>Nigeria</div>
+                Lagos — [add address]
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground text-center">
-          © 2026 HakunaMatataWorld Ltd. · Arusha, Tanzania · TripAdvisor Travelers' Choice
+
+        <div className="pt-6 border-t flex flex-col md:flex-row items-center justify-between gap-3" style={{ borderColor: 'var(--border)' }}>
+          <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)' }}>
+            © 2026 HakunaMatataWorld Ltd. · TripAdvisor Travelers' Choice
+          </div>
+          <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)' }}>
+            Tanzania · USA · Nigeria
+          </div>
         </div>
-        <button
-          onClick={onRegister}
-          className="text-xs font-medium hover:opacity-70 transition-opacity"
-          style={{ color: 'var(--secondary)' }}
-        >
-          Register an account
-        </button>
       </div>
     </footer>
   )
@@ -3193,23 +3321,15 @@ function TourJourneyFlow() {
     <section
       ref={sectionRef}
       id="journey"
-      style={{ backgroundColor: '#0f2318', minHeight: '100vh' }}
+      style={{ backgroundColor: '#ffffff', minHeight: '100vh' }}
       className="relative overflow-hidden"
     >
       {/* Background texture dots */}
       <div
-        className="absolute inset-0 opacity-10"
+        className="absolute inset-0 opacity-5"
         style={{
           backgroundImage: 'radial-gradient(circle, #c4622d 1px, transparent 1px)',
           backgroundSize: '32px 32px',
-        }}
-      />
-
-      {/* Gradient overlay */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse at 50% 30%, rgba(26,58,42,0.6) 0%, transparent 70%)',
         }}
       />
 
@@ -3218,7 +3338,7 @@ function TourJourneyFlow() {
         <div className="text-center mb-16">
           <div
             className="text-xs font-semibold uppercase tracking-widest mb-4"
-            style={{ color: '#d4a017', fontFamily: 'Outfit, sans-serif', letterSpacing: '0.2em' }}
+            style={{ color: '#c4622d', fontFamily: 'Outfit, sans-serif', letterSpacing: '0.2em' }}
           >
             The Tanzania Journey
           </div>
@@ -3227,14 +3347,13 @@ function TourJourneyFlow() {
             style={{
               fontFamily: 'Playfair Display, serif',
               fontSize: 'clamp(32px, 5vw, 56px)',
-              color: '#f5f0e8',
+              color: 'var(--foreground)',
               lineHeight: 1.15,
             }}
           >
-            From Savanna to Summit<br />
-            <em style={{ color: '#d4a017' }}>to Sea</em>
+            From Savanna to Summit to Sea
           </h2>
-          <p style={{ color: 'rgba(245,240,232,0.65)', fontFamily: 'Outfit, sans-serif', fontSize: 16, maxWidth: 520, margin: '0 auto' }}>
+          <p style={{ color: 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif', fontSize: 16, maxWidth: 520, margin: '0 auto' }}>
             Every HakunaMatataWorld tour flows through these legendary destinations — click each stop to explore what awaits you.
           </p>
         </div>
@@ -3257,12 +3376,12 @@ function TourJourneyFlow() {
                       width: activeStop === i ? 52 : 38,
                       height: activeStop === i ? 52 : 38,
                       borderRadius: '50%',
-                      border: `2px solid ${activeStop === i ? s.dotColor : 'rgba(255,255,255,0.15)'}`,
+                      border: `2px solid ${activeStop === i ? s.dotColor : 'var(--border)'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: activeStop === i ? 'rgba(26,58,42,0.8)' : 'rgba(15,35,24,0.6)',
-                      boxShadow: activeStop === i ? `0 0 20px ${s.dotColor}60` : 'none',
+                      backgroundColor: activeStop === i ? '#ffffff' : 'var(--muted)',
+                      boxShadow: activeStop === i ? `0 6px 16px ${s.dotColor}40` : 'none',
                       transition: 'all 0.3s ease',
                     }}
                   >
@@ -3271,9 +3390,8 @@ function TourJourneyFlow() {
                         width: activeStop === i ? 18 : 12,
                         height: activeStop === i ? 18 : 12,
                         borderRadius: '50%',
-                        backgroundColor: i <= activeStop ? s.dotColor : 'rgba(255,255,255,0.25)',
+                        backgroundColor: i <= activeStop ? s.dotColor : 'var(--border)',
                         transition: 'all 0.3s ease',
-                        boxShadow: i <= activeStop ? `0 0 8px ${s.dotColor}80` : 'none',
                       }}
                     />
                   </div>
@@ -3284,7 +3402,7 @@ function TourJourneyFlow() {
                       className="font-semibold text-sm transition-colors duration-200"
                       style={{
                         fontFamily: 'Playfair Display, serif',
-                        color: activeStop === i ? '#f5f0e8' : 'rgba(245,240,232,0.55)',
+                        color: activeStop === i ? 'var(--foreground)' : 'var(--muted-foreground)',
                         fontSize: activeStop === i ? 15 : 13,
                       }}
                     >
@@ -3292,7 +3410,7 @@ function TourJourneyFlow() {
                     </div>
                     <div
                       className="text-xs mt-0.5"
-                      style={{ color: activeStop === i ? s.dotColor : 'rgba(245,240,232,0.3)', fontFamily: 'Outfit, sans-serif' }}
+                      style={{ color: activeStop === i ? s.dotColor : 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif' }}
                     >
                       {s.subtitle}
                     </div>
@@ -3309,7 +3427,7 @@ function TourJourneyFlow() {
                       background: i < activeStop
                         ? `linear-gradient(90deg, ${JOURNEY_STOPS[i].dotColor}, ${JOURNEY_STOPS[i + 1].dotColor})`
                         : 'none',
-                      borderTop: i < activeStop ? 'none' : '2px dashed rgba(255,255,255,0.18)',
+                      borderTop: i < activeStop ? 'none' : '2px dashed var(--border)',
                       marginTop: -32,
                       transition: 'all 0.4s ease',
                     }}
@@ -3325,13 +3443,12 @@ function TourJourneyFlow() {
           key={stop.id}
           className="grid md:grid-cols-2 gap-0 rounded-2xl overflow-hidden"
           style={{
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--shadow-lg)',
             opacity: isVisible ? 1 : 0,
             transform: isVisible ? 'translateY(0)' : 'translateY(32px)',
             transition: 'opacity 0.6s ease, transform 0.6s ease',
-            backgroundColor: 'rgba(15,35,24,0.7)',
-            backdropFilter: 'blur(12px)',
+            backgroundColor: '#ffffff',
           }}
         >
           {/* Image side */}
@@ -3374,7 +3491,7 @@ function TourJourneyFlow() {
                   <div style={{ color: stop.dotColor, fontSize: 12, fontFamily: 'Outfit, sans-serif', fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 6 }}>
                     Day {stop.days}
                   </div>
-                  <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(26px, 3vw, 36px)', color: '#f5f0e8', lineHeight: 1.1 }}>
+                  <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 'clamp(26px, 3vw, 36px)', color: 'var(--foreground)', lineHeight: 1.1 }}>
                     {stop.name}
                   </h3>
                   <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: stop.dotColor, marginTop: 4 }}>
@@ -3383,13 +3500,13 @@ function TourJourneyFlow() {
                 </div>
               </div>
 
-              <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 15, color: 'rgba(245,240,232,0.75)', lineHeight: 1.7, marginBottom: 28 }}>
+              <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 15, color: 'var(--muted-foreground)', lineHeight: 1.7, marginBottom: 28 }}>
                 {stop.description}
               </p>
 
               {/* Highlights */}
               <div>
-                <div style={{ fontSize: 11, color: 'rgba(245,240,232,0.4)', fontFamily: 'Outfit, sans-serif', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted-foreground)', fontFamily: 'Outfit, sans-serif', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 12 }}>
                   Highlights
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -3399,9 +3516,9 @@ function TourJourneyFlow() {
                       className="px-3 py-1 rounded-full text-xs"
                       style={{
                         fontFamily: 'Outfit, sans-serif',
-                        backgroundColor: 'rgba(255,255,255,0.07)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        color: 'rgba(245,240,232,0.8)',
+                        backgroundColor: 'var(--muted)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--muted-foreground)',
                       }}
                     >
                       {h}
@@ -3412,7 +3529,7 @@ function TourJourneyFlow() {
             </div>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center justify-between mt-8 pt-6" style={{ borderTop: '1px solid var(--border)' }}>
               <button
                 onClick={() => setActiveStop(Math.max(0, activeStop - 1))}
                 disabled={activeStop === 0}
@@ -3420,7 +3537,7 @@ function TourJourneyFlow() {
                 style={{
                   fontFamily: 'Outfit, sans-serif',
                   fontSize: 14,
-                  color: activeStop === 0 ? 'rgba(245,240,232,0.2)' : 'rgba(245,240,232,0.7)',
+                  color: activeStop === 0 ? 'var(--border)' : 'var(--muted-foreground)',
                   cursor: activeStop === 0 ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -3437,7 +3554,7 @@ function TourJourneyFlow() {
                       width: activeStop === i ? 20 : 6,
                       height: 6,
                       borderRadius: 3,
-                      backgroundColor: activeStop === i ? stop.dotColor : 'rgba(255,255,255,0.2)',
+                      backgroundColor: activeStop === i ? stop.dotColor : 'var(--border)',
                       transition: 'all 0.3s ease',
                       cursor: 'pointer',
                     }}
@@ -3452,7 +3569,7 @@ function TourJourneyFlow() {
                 style={{
                   fontFamily: 'Outfit, sans-serif',
                   fontSize: 14,
-                  color: activeStop === JOURNEY_STOPS.length - 1 ? 'rgba(245,240,232,0.2)' : 'rgba(245,240,232,0.7)',
+                  color: activeStop === JOURNEY_STOPS.length - 1 ? 'var(--border)' : 'var(--muted-foreground)',
                   cursor: activeStop === JOURNEY_STOPS.length - 1 ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -3464,7 +3581,7 @@ function TourJourneyFlow() {
 
         {/* CTA */}
         <div className="mt-12 text-center">
-          <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: 'rgba(245,240,232,0.45)', marginBottom: 16 }}>
+          <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, color: 'var(--muted-foreground)', marginBottom: 16 }}>
             Ready to follow this route?
           </p>
           <a
@@ -3475,7 +3592,7 @@ function TourJourneyFlow() {
               fontFamily: 'Outfit, sans-serif',
               backgroundColor: '#c4622d',
               color: '#f5f0e8',
-              boxShadow: '0 8px 32px rgba(196,98,45,0.35)',
+              boxShadow: '0 8px 24px rgba(196,98,45,0.3)',
             }}
           >
             Browse Tour Packages
@@ -3650,16 +3767,17 @@ function ReviewsSection() {
 // ─── Gallery Section ──────────────────────────────────────────────────────────
 
 const GALLERY_PHOTOS = [
-  { src: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=600&h=400&fit=crop&auto=format', alt: 'Elephant herd at sunset', span: 'col-span-2' },
-  { src: 'https://images.unsplash.com/photo-1621414050946-1b84c4e21a31?w=400&h=400&fit=crop&auto=format', alt: 'Kilimanjaro summit', span: '' },
-  { src: 'https://images.unsplash.com/photo-1586861635167-e5223aadc9fe?w=400&h=400&fit=crop&auto=format', alt: 'Zanzibar beach', span: '' },
-  { src: 'https://images.unsplash.com/photo-1532574754390-44dc5c6780bb?w=400&h=400&fit=crop&auto=format', alt: 'Wildebeest migration', span: '' },
-  { src: 'https://images.unsplash.com/photo-1602410125631-7e736e36797c?w=600&h=400&fit=crop&auto=format', alt: 'Serengeti sunrise', span: 'col-span-2' },
+  { src: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=600&h=600&fit=crop&auto=format', alt: 'Elephant herd at sunset' },
+  { src: 'https://images.unsplash.com/photo-1621414050946-1b84c4e21a31?w=600&h=600&fit=crop&auto=format', alt: 'Kilimanjaro summit' },
+  { src: 'https://images.unsplash.com/photo-1586861635167-e5223aadc9fe?w=600&h=600&fit=crop&auto=format', alt: 'Zanzibar beach' },
+  { src: 'https://images.unsplash.com/photo-1532574754390-44dc5c6780bb?w=600&h=600&fit=crop&auto=format', alt: 'Wildebeest migration' },
+  { src: 'https://images.unsplash.com/photo-1602410125631-7e736e36797c?w=600&h=600&fit=crop&auto=format', alt: 'Serengeti sunrise' },
+  { src: 'https://images.unsplash.com/photo-1613864309738-9102a9e22883?w=600&h=600&fit=crop&auto=format', alt: 'Safari vehicle in the Serengeti' },
 ]
 
 function GallerySection() {
   return (
-    <section className="py-20 px-5 md:px-8" style={{ backgroundColor: 'var(--card)' }}>
+    <section className="py-20 px-5 md:px-8" style={{ backgroundColor: '#ffffff' }}>
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10">
           <div className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--secondary)', fontFamily: 'Outfit, sans-serif' }}>From The Field</div>
@@ -3667,10 +3785,9 @@ function GallerySection() {
             Tanzania through the lens
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-2">
           {GALLERY_PHOTOS.map((p, i) => (
-            <div key={i} className={`relative rounded-2xl overflow-hidden group ${p.span}`}
-              style={{ height: 'clamp(160px, 18vw, 260px)' }}>
+            <div key={i} className="relative overflow-hidden group aspect-square">
               <img src={p.src} alt={p.alt} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4"
                 style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5), transparent)' }}>
@@ -4547,7 +4664,21 @@ function TripsScreen({ bookings, onNavigate, onCompletePayment }: { bookings: Bo
 
 // ─── Profile Screen ───────────────────────────────────────────────────────────
 
-function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister }: { userName: string | null; bookings: Booking[]; onLogout: () => void; onNavigate: (v: View) => void; onRegister: () => void }) {
+function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister, onSelectTour }: { userName: string | null; bookings: Booking[]; onLogout: () => void; onNavigate: (v: View) => void; onRegister: () => void; onSelectTour: (t: Tour) => void }) {
+  const { saved, toggle } = useSavedTours()
+  const [notifsOn, setNotifsOn] = useState<boolean>(() => {
+    try { return localStorage.getItem('hmw_notifications') !== 'off' } catch { return true }
+  })
+  const [showSaved, setShowSaved] = useState(false)
+
+  const toggleNotifs = () => {
+    setNotifsOn(v => {
+      const next = !v
+      try { localStorage.setItem('hmw_notifications', next ? 'on' : 'off') } catch { /* best-effort */ }
+      return next
+    })
+  }
+
   if (!userName) {
     return (
       <div className="pt-20 pb-24 md:pb-10 flex flex-col items-center justify-center text-center px-5"
@@ -4565,15 +4696,8 @@ function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister }:
       </div>
     )
   }
-  const menuItems = [
-    { icon: '🎫', label: 'My Bookings', sub: bookings.length ? `${bookings.length} trip${bookings.length > 1 ? 's' : ''} · latest ${bookings[bookings.length - 1].ref}` : 'No bookings yet', action: () => onNavigate('trips') },
-    { icon: '🗺️', label: 'Tour Journey Flow', sub: 'Arusha to Zanzibar route', action: () => onNavigate('trips') },
-    { icon: '❤️', label: 'Saved Trips', sub: '3 tours saved', action: () => {} },
-    { icon: '📄', label: 'Travel Documents', sub: 'Passport, visa, insurance', action: () => {} },
-    { icon: '🔔', label: 'Notifications', sub: 'Trip alerts & offers', action: () => {} },
-    { icon: '🌐', label: 'Language & Currency', sub: 'English · USD', action: () => {} },
-    { icon: '❓', label: 'Help & Support', sub: '24/7 concierge', action: () => {} },
-  ]
+
+  const savedTours = tours.filter(t => saved.includes(t.id))
   const initials = userName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
   return (
@@ -4589,42 +4713,95 @@ function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister }:
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, color: 'var(--foreground)' }}>{userName}</h2>
             <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)', marginTop: 4 }}>HakunaMatataWorld member</p>
             <div className="flex gap-4 mt-3">
-              {[{ v: String(bookings.length), l: 'Trips' }, { v: '3', l: 'Saved' }, { v: '4.9★', l: 'Rating' }].map(s => (
-                <div key={s.l} className="text-center">
-                  <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, color: 'var(--foreground)', fontWeight: 600 }}>{s.v}</div>
-                  <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: 'var(--muted-foreground)' }}>{s.l}</div>
-                </div>
-              ))}
+              <button onClick={() => onNavigate('trips')} className="text-center">
+                <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, color: 'var(--foreground)', fontWeight: 600 }}>{bookings.length}</div>
+                <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: 'var(--muted-foreground)' }}>Trips</div>
+              </button>
+              <button onClick={() => setShowSaved(true)} className="text-center">
+                <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, color: 'var(--foreground)', fontWeight: 600 }}>{savedTours.length}</div>
+                <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: 'var(--muted-foreground)' }}>Saved</div>
+              </button>
+              <div className="text-center">
+                <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 16, color: 'var(--foreground)', fontWeight: 600 }}>4.9★</div>
+                <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 11, color: 'var(--muted-foreground)' }}>Site Rating</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-5 md:px-8 py-6 space-y-2">
-        {menuItems.map(item => (
-          <button key={item.label} onClick={item.action}
-            className="card-surface interactive w-full flex items-center gap-4 p-4 text-left">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-              style={{ backgroundColor: 'rgba(26,58,42,0.06)' }}>{item.icon}</div>
-            <div className="flex-1">
-              <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>{item.label}</div>
-              <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>{item.sub}</div>
+        {/* My Bookings */}
+        <button onClick={() => onNavigate('trips')} className="card-surface interactive w-full flex items-center gap-4 p-4 text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: 'rgba(26,58,42,0.06)' }}>🎫</div>
+          <div className="flex-1">
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>My Bookings</div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>
+              {bookings.length ? `${bookings.length} trip${bookings.length > 1 ? 's' : ''} · latest ${bookings[bookings.length - 1].ref}` : 'No bookings yet'}
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-        ))}
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
 
-        {/* Support CTA */}
+        {/* Saved Trips — real, opens a real list */}
+        <button onClick={() => setShowSaved(true)} className="card-surface interactive w-full flex items-center gap-4 p-4 text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: 'rgba(196,98,45,0.08)' }}>♥</div>
+          <div className="flex-1">
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>Saved Trips</div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>
+              {savedTours.length ? `${savedTours.length} tour${savedTours.length > 1 ? 's' : ''} saved` : 'Tap the ♡ on any tour to save it'}
+            </div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        {/* Travel Documents — real link to trip checklist */}
+        <button onClick={() => onNavigate('trips')} className="card-surface interactive w-full flex items-center gap-4 p-4 text-left">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: 'rgba(212,160,23,0.1)' }}>📄</div>
+          <div className="flex-1">
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>Travel Documents</div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>Passport, visa & checklist — view per trip</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+
+        {/* Notifications — a real, working toggle */}
+        <div className="card-surface w-full flex items-center gap-4 p-4">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: 'rgba(26,58,42,0.06)' }}>🔔</div>
+          <div className="flex-1">
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>Notifications</div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>Trip alerts & offers</div>
+          </div>
+          <button onClick={toggleNotifs} aria-label="Toggle notifications"
+            className="flex-shrink-0 relative"
+            style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: notifsOn ? 'var(--primary)' : 'var(--muted)', transition: 'background-color 0.2s var(--ease)' }}>
+            <span style={{
+              position: 'absolute', top: 2, left: notifsOn ? 20 : 2, width: 18, height: 18, borderRadius: '50%',
+              backgroundColor: 'white', transition: 'left 0.2s var(--ease)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </button>
+        </div>
+
+        {/* Language & currency — informational only, no fake interactivity */}
+        <div className="card-surface w-full flex items-center gap-4 p-4">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ backgroundColor: 'rgba(26,58,42,0.06)' }}>🌐</div>
+          <div className="flex-1">
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: 'var(--foreground)' }}>Language & Currency</div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>English · USD (more coming soon)</div>
+          </div>
+        </div>
+
+        {/* Support CTA — real tel / WhatsApp links */}
         <div className="rounded-2xl p-5 mt-4" style={{ backgroundColor: 'var(--primary)', background: 'linear-gradient(135deg, #1a3a2a, #2a5a3a)' }}>
           <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 18, color: '#f5f0e8', marginBottom: 8 }}>Need help?</h3>
           <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'rgba(245,240,232,0.65)', marginBottom: 14 }}>Our travel concierge team is available 24/7 for you.</p>
           <div className="flex gap-2">
-            {[{ icon: '📞', label: 'Call Us' }, { icon: '💬', label: 'WhatsApp' }].map(btn => (
-              <button key={btn.label} className="btn"
-                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#f5f0e8', border: '1px solid rgba(255,255,255,0.2)', boxShadow: 'none', padding: '9px 16px', fontSize: 13 }}>
-                {btn.icon} {btn.label}
-              </button>
-            ))}
+            <a href="tel:+255754744300" className="btn" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#f5f0e8', border: '1px solid rgba(255,255,255,0.2)', boxShadow: 'none', padding: '9px 16px', fontSize: 13, textDecoration: 'none' }}>
+              📞 Call Us
+            </a>
+            <a href="https://wa.me/255754744300" target="_blank" rel="noopener noreferrer" className="btn" style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#f5f0e8', border: '1px solid rgba(255,255,255,0.2)', boxShadow: 'none', padding: '9px 16px', fontSize: 13, textDecoration: 'none' }}>
+              💬 WhatsApp
+            </a>
           </div>
         </div>
 
@@ -4633,6 +4810,40 @@ function ProfileScreen({ userName, bookings, onLogout, onNavigate, onRegister }:
           Sign Out
         </button>
       </div>
+
+      {showSaved && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(28,42,30,0.6)' }}>
+          <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--card)', boxShadow: 'var(--shadow-lg)', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 19, color: 'var(--foreground)' }}>Saved Trips</h2>
+                <button onClick={() => setShowSaved(false)} className="text-muted-foreground hover:text-foreground"><IconClose /></button>
+              </div>
+              {savedTours.length === 0 ? (
+                <p style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: 'var(--muted-foreground)', textAlign: 'center', padding: '24px 0' }}>
+                  Nothing saved yet — tap the ♡ on any tour card to add it here.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {savedTours.map(t => (
+                    <div key={t.id} className="card-surface flex gap-3 p-2.5">
+                      <img src={t.image} alt={t.name} className="rounded-lg object-cover flex-shrink-0" style={{ width: 60, height: 60 }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate" style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 13 }}>{t.name}</div>
+                        <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>${t.price.toLocaleString()}</div>
+                      </div>
+                      <div className="flex flex-col gap-1 justify-center flex-shrink-0">
+                        <button onClick={() => { setShowSaved(false); onSelectTour(t) }} className="text-xs font-medium" style={{ color: 'var(--secondary)' }}>View</button>
+                        <button onClick={() => toggle(t.id)} className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -5001,7 +5212,7 @@ export default function App() {
         <WhyUs />
         <Destinations />
         <Contact />
-        <Footer onRegister={() => setModal({ type: 'register' })} />
+        <Footer onRegister={() => setModal({ type: 'register' })} onNavigate={navigate} />
       </>}
 
       {/* ── Explore ── */}
@@ -5027,6 +5238,7 @@ export default function App() {
           onLogout={() => { setUserName(null); setView('home') }}
           onNavigate={navigate}
           onRegister={() => setModal({ type: 'register' })}
+          onSelectTour={tour => setModal({ type: 'tour', tour })}
         />
       )}
 
